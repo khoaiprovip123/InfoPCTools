@@ -150,9 +150,6 @@ class PcInfoAppQt(QMainWindow):
 
     def _init_timers(self):
         """Khởi tạo QTimers cho việc debouncing các sự kiện tìm kiếm."""
-        self.search_home_results_timer = QTimer(self)
-        self.search_home_results_timer.setSingleShot(True)
-        self.search_home_results_timer.timeout.connect(lambda: self._perform_text_search(self.text_home_info_qt, self.search_home_results_input.text()))
 
         self.search_utilities_results_timer = QTimer(self)
         self.search_utilities_results_timer.setSingleShot(True)
@@ -174,10 +171,14 @@ class PcInfoAppQt(QMainWindow):
         top_layout = QHBoxLayout(top_frame)
         top_layout.setContentsMargins(0,0,0,0)
 
-        self.app_title_label = QLabel("Công Cụ Hỗ Trợ PC")
         font_title = QFont(DEFAULT_FONT_FAMILY, 16, QFont.Bold)
-        self.app_title_label.setFont(font_title)
-        top_layout.addWidget(self.app_title_label)
+        # self.app_title_label.setFont(font_title) # Dòng này không cần nữa
+        # top_layout.addWidget(self.app_title_label) # Dòng này không cần nữa
+
+        # --- Greeting Label (sẽ đóng vai trò như tiêu đề chính) ---
+        self.greeting_label = QLabel("Chào bạn!") # Default greeting
+        self.greeting_label.setFont(font_title) # Sử dụng font của tiêu đề cũ
+        top_layout.addWidget(self.greeting_label)
         top_layout.addStretch(1)
 
         if self.logo_pixmap:
@@ -206,6 +207,11 @@ class PcInfoAppQt(QMainWindow):
         self.tab_fixes = QWidget()
         self.notebook.addTab(self.tab_fixes, "Fix Hệ Thống")
         self._create_fixes_tab(self.tab_fixes)
+
+        # --- Tab: Thông tin hệ thống ---
+        self.tab_about = QWidget()
+        self.notebook.addTab(self.tab_about, "Thông Tin Hệ Thống")
+        self._create_about_tab(self.tab_about)
 
         # --- Global Buttons Frame ---
         global_buttons_frame = QFrame()
@@ -280,17 +286,7 @@ class PcInfoAppQt(QMainWindow):
         user_info_form_layout.addWidget(self.text_notes_qt, 4, 1, 1, 3)
 
         user_info_form_layout.setColumnStretch(1, 1) # Cho cột input mở rộng
-        user_info_form_layout.setColumnStretch(3, 1)
-
-        # --- Search bar for Home results ---
-        search_home_layout = QHBoxLayout()
-        # search_home_layout.addWidget(QLabel("Tìm trong kết quả:")) # Bỏ label
-        self.search_home_results_input = QLineEdit()
-        self.search_home_results_input.setFont(self.default_font)
-        self.search_home_results_input.setPlaceholderText("Nhập từ khóa...")
-        self.search_home_results_input.textChanged.connect(lambda: self.search_home_results_timer.start(300)) # Debounce 300ms
-        search_home_layout.addWidget(self.search_home_results_input)
-        layout.addLayout(search_home_layout)
+        user_info_form_layout.setColumnStretch(3, 1) # Giữ stretch cho cột 3 để căn chỉnh custom floor
 
         # --- System Info Display (QGroupBox + QTextEdit) ---
         group_system_info = QGroupBox("Thông tin hệ thống")
@@ -537,6 +533,65 @@ class PcInfoAppQt(QMainWindow):
 
         main_layout.addWidget(results_container_widget, 5)
 
+    def _create_about_tab(self, parent_tab_widget):
+        layout = QVBoxLayout(parent_tab_widget)
+        layout.setContentsMargins(20, 20, 20, 20) # Thêm padding cho dễ nhìn
+        layout.setSpacing(15)
+        layout.setAlignment(Qt.AlignTop)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_content_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content_widget)
+        scroll_layout.setAlignment(Qt.AlignTop)
+
+        # --- Tiêu đề ứng dụng ---
+        title_label = QLabel("Công Cụ Hỗ Trợ PC")
+        title_font = QFont(DEFAULT_FONT_FAMILY, 18, QFont.Bold)
+        title_label.setFont(title_font)
+        title_label.setAlignment(Qt.AlignCenter)
+        scroll_layout.addWidget(title_label)
+
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Phiên bản:", "1.0.0 (Qt)"))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Người sáng lập:", "HPC"))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Liên hệ:", "support@hpc.vn"))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Giấy phép:", "Phần mềm nội bộ"))
+
+        readme_text = """**README:**
+
+Đây là công cụ hỗ trợ thu thập thông tin cấu hình máy tính và thực hiện một số tác vụ tiện ích, sửa lỗi cơ bản trên hệ điều hành Windows.
+
+**Các chức năng chính:**
+- Thu thập thông tin chi tiết về phần cứng, phần mềm.
+- Cung cấp các tiện ích quét virus, kiểm tra ổ đĩa, pin, kích hoạt Windows.
+- Hỗ trợ các tác vụ sửa lỗi hệ thống như dọn dẹp file tạm, reset kết nối mạng, chạy SFC scan."""
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Mô tả:", readme_text, is_html=True))
+        scroll_area.setWidget(scroll_content_widget)
+        layout.addWidget(scroll_area)
+
+    def _create_info_section_qt(self, parent, title_text, content_text, is_html=False):
+        section_group = QGroupBox(title_text)
+        section_group.setFont(self.bold_font)
+        section_layout = QVBoxLayout(section_group)
+
+        content_label = QLabel()
+        content_label.setFont(self.default_font)
+        content_label.setWordWrap(True)
+        if is_html:
+            # Xử lý markdown đơn giản (**bold**) thành HTML
+            html_content = html.escape(content_text).replace("**", "<b>").replace("</b>", "</b>", 1) # Chỉ replace cặp đầu tiên
+            # Để xử lý nhiều cặp bold, cần regex hoặc logic phức tạp hơn, ví dụ:
+            import re
+            html_content = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', html.escape(content_text))
+            html_content = html_content.replace("\n", "<br>")
+            content_label.setTextFormat(Qt.RichText) # Cho phép hiển thị HTML
+            content_label.setText(html_content)
+        else:
+            content_label.setText(content_text)
+
+        section_layout.addWidget(content_label)
+        return section_group
+
     def _apply_styles(self):
         # Áp dụng QSS (Qt Style Sheets)
         self.setStyleSheet("""
@@ -610,6 +665,9 @@ class PcInfoAppQt(QMainWindow):
             }
             QScrollArea {
                 border: none;
+            }
+            #AboutTabContent QLabel { /* Specific styling for labels in About tab if needed */
+                padding-bottom: 5px;
             }
         """)
         self.button_export_home.setStyleSheet("background-color: #A9D18E;") # Green
@@ -712,8 +770,10 @@ class PcInfoAppQt(QMainWindow):
         self._update_display_widget(self.text_home_info_qt, "Đang lấy thông tin, vui lòng chờ...")
         self._toggle_buttons_qt(enable_refresh_home=False, enable_export_home=False)
 
-        # Clear previous search in home results when refreshing
-        if hasattr(self, 'search_home_results_input'):
+        # Clear highlights from the home text edit if the search input was removed
+        if hasattr(self, 'text_home_info_qt') and not hasattr(self, 'search_home_results_input'):
+            self._clear_text_highlights(self.text_home_info_qt)
+        elif hasattr(self, 'search_home_results_input'): # Should not be true if search bar is removed
             self.search_home_results_input.clear()
 
         thread = WorkerThread(get_detailed_system_information, "fetch_pc_info", needs_wmi=False) # function handles its own WMI
@@ -727,6 +787,11 @@ class PcInfoAppQt(QMainWindow):
             self.pc_info_dict = data
             home_info_data = self.pc_info_dict.get("SystemInformation", {"PC": {"Lỗi": "Không có dữ liệu SystemInformation"}})
             self.formatted_pc_info_string_home = format_system_details_to_string(home_info_data) # Chỉ format phần system details
+
+            # Update greeting label with user name
+            user_name = home_info_data.get("PC", {}).get("User Name", NOT_AVAILABLE)
+            self.greeting_label.setText(f"Chào bạn, {user_name}!")
+
             self._update_display_widget(self.text_home_info_qt, self.formatted_pc_info_string_home)
             self._toggle_buttons_qt(enable_refresh_home=True, enable_export_home=True)
 
@@ -854,63 +919,104 @@ class PcInfoAppQt(QMainWindow):
 
     def _format_task_result_for_display_generic(self, result_data):
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold."""
-        if result_data is None:
-            return "Tác vụ hoàn thành, không có dữ liệu trả về."
-        if isinstance(result_data, str) and (result_data == NOT_AVAILABLE or result_data == NOT_FOUND or result_data == ERROR_WMI_CONNECTION):
-             return result_data
+        """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold.
+           Bỏ qua các giá trị không khả dụng hoặc rỗng."""
+
+        UNAVAILABLE_STR_CONSTANTS = [NOT_AVAILABLE, NOT_FOUND, ERROR_WMI_CONNECTION]
+
+        def is_value_unavailable(val):
+            if val is None:
+                return True
+            # Check if the value itself is one of the string constants
+            if isinstance(val, str) and val in UNAVAILABLE_STR_CONSTANTS:
+                return True
+            # Check if the string representation, when stripped, is empty or an unavailable constant
+            s_val = str(val).strip()
+            if s_val == "" or s_val in UNAVAILABLE_STR_CONSTANTS:
+                return True
+            return False
+
+        if is_value_unavailable(result_data):
+            return "" # Return empty string if the entire result_data is unavailable
 
         lines = []
         if isinstance(result_data, list):
             if not result_data:
                 return "Tác vụ hoàn thành, không có mục nào được trả về."
             for item in result_data:
-                if isinstance(item, dict):
+                if is_value_unavailable(item):
+                    continue # Skip unavailable items in a list
+                elif isinstance(item, dict):
                     item_lines = []
-                    for k, v in item.items():
-                        item_lines.append(f"  **{k}:** {v}")
-                    lines.append("\n".join(item_lines))
+                    for k, v_raw in item.items():
+                        if not is_value_unavailable(v_raw):
+                            item_lines.append(f"  **{k}:** {v_raw}")
+                    if item_lines: # Only add if there's something to show for this item
+                        lines.append("\n".join(item_lines))
                 else:
                     lines.append(str(item))
+            if not lines:
+                return "" # Or a message like "Không có thông tin khả dụng."
             return "\n---\n".join(lines)
+
         elif isinstance(result_data, dict):
             if not result_data:
                 return "Tác vụ hoàn thành, không có dữ liệu trả về (dict rỗng)."
             
-            if "message" in result_data and "status" in result_data:
-                lines.append(f"**Trạng thái:** {result_data.get('status', 'N/A')}")
-                lines.append(f"**Thông điệp:** {result_data['message']}")
+            if "message" in result_data and "status" in result_data: # Special status dict
+                status_val = result_data.get('status', 'N/A')
+                message_val = result_data['message']
+
+                if not is_value_unavailable(status_val):
+                    lines.append(f"**Trạng thái:** {status_val}")
+                if not is_value_unavailable(message_val):
+                    lines.append(f"**Thông điệp:** {message_val}")
                 
-                if "details" in result_data and result_data['details']:
+                if "details" in result_data and not is_value_unavailable(result_data['details']):
                     details_content = result_data['details']
                     details_str_list = ["\n**Chi tiết:**"]
+                    has_details_to_show = False
                     if isinstance(details_content, dict):
-                        for k_detail, v_detail in details_content.items():
-                            if k_detail == 'errors_list' and isinstance(v_detail, list) and v_detail:
-                                details_str_list.append(f"  **Lỗi chi tiết:**")
-                                for i, err_item in enumerate(v_detail[:5]): # Show first 5 errors
-                                    details_str_list.append(f"    - {err_item}")
-                                if len(v_detail) > 5:
-                                    details_str_list.append("    ...")
-                            elif k_detail == 'deleted_files_count' or k_detail == 'deleted_folders_count' or k_detail == 'total_size_freed_mb':
-                                details_str_list.append(f"  **{k_detail.replace('_', ' ').capitalize()}:** {v_detail}")
-                            else: # General key-value in details
-                                details_str_list.append(f"  **{k_detail}:** {v_detail}")
+                        for k_detail, v_detail_raw in details_content.items():
+                            if not is_value_unavailable(v_detail_raw):
+                                has_details_to_show = True
+                                if k_detail == 'errors_list' and isinstance(v_detail_raw, list) and v_detail_raw:
+                                    details_str_list.append(f"  **Lỗi chi tiết:**")
+                                    errors_shown_count = 0
+                                    for err_item in v_detail_raw:
+                                        if not is_value_unavailable(err_item) and errors_shown_count < 5:
+                                            details_str_list.append(f"    - {err_item}")
+                                            errors_shown_count += 1
+                                    if sum(1 for e_item in v_detail_raw if not is_value_unavailable(e_item)) > 5:
+                                        details_str_list.append("    ...")
+                                elif k_detail in ['deleted_files_count', 'deleted_folders_count', 'total_size_freed_mb']:
+                                    details_str_list.append(f"  **{k_detail.replace('_', ' ').capitalize()}:** {v_detail_raw}")
+                                else:
+                                    details_str_list.append(f"  **{k_detail}:** {v_detail_raw}")
+                        if has_details_to_show: lines.append("\n".join(details_str_list))
                     elif isinstance(details_content, list): # if details is a list of strings
-                         for detail_item in details_content:
-                            details_str_list.append(f"  {detail_item}")
+                        list_details_to_show = [f"  {d_item}" for d_item in details_content if not is_value_unavailable(d_item)]
+                        if list_details_to_show:
+                            details_str_list.extend(list_details_to_show)
+                            lines.append("\n".join(details_str_list))
                     else: # Generic details string
                         details_str_list.append(f"  {details_content}")
-                    lines.append("\n".join(details_str_list))
+                        lines.append("\n".join(details_str_list))
                 
-                if "path" in result_data and result_data['path']:
+                if "path" in result_data and not is_value_unavailable(result_data['path']):
                     lines.append(f"\n**Đường dẫn file:** {result_data['path']}")
+                if not lines: return ""
                 return "\n".join(lines)
             else:
-                for k, v in result_data.items():
-                    lines.append(f"**{k}:** {v}")
+                for k, v_raw in result_data.items():
+                    if not is_value_unavailable(v_raw):
+                        lines.append(f"**{k}:** {v_raw}")
+                if not lines: return ""
                 return "\n".join(lines)
         else:
-            return str(result_data)
+            # This case should have been caught by the initial is_value_unavailable(result_data)
+            # but as a fallback, ensure we don't return the unavailable constant itself.
+            return str(result_data) if not is_value_unavailable(result_data) else ""
 
     def enable_firewall_qt(self):
         if QMessageBox.question(self, "Xác nhận Bật Tường lửa", "Bạn có chắc chắn muốn BẬT Windows Firewall cho tất cả các profile không?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
