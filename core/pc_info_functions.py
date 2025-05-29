@@ -12,7 +12,9 @@ import logging
 import shutil # For file operations like temp file deletion
 import ctypes # For checking admin rightsimport platform # Ensure platform is imported for ping
 from datetime import datetime, timedelta # Thêm import datetime và timedelta
-import json # Thêm import json cho phần if __name__ == "__main__":import winreg # Thêm import winreg để truy cập Registry
+import locale # For preferred encoding
+import json # Thêm import json cho phần if __name__ == "__main__":
+import winreg # Thêm import winreg để truy cập Registry
 
 # --- Cấu hình Logging ---
 # Cấu hình cơ bản, có thể được ghi đè ở file chính
@@ -163,6 +165,22 @@ def get_cpu_info(wmi_service): # Thêm wmi_service làm tham số
     logging.error("Không thể lấy thông tin CPU từ mọi phương thức.")
     return f"{ERROR_FETCHING_INFO} CPU (tất cả thất bại)"
 
+# --- Constants for Disk Info Enhancement ---
+MSFT_BUS_TYPE_MAP = {
+    0: "Unknown", 1: "SCSI", 2: "ATAPI", 3: "ATA", 4: "IEEE 1394",
+    5: "SSA", 6: "Fibre Channel", 7: "USB", 8: "RAID", 9: "iSCSI",
+    10: "SAS", 11: "SATA", 12: "SD", 13: "MMC", 17: "NVMe",
+}
+
+MSFT_MEDIA_TYPE_MAP = {
+    0: NOT_IDENTIFIED,  # Unspecified
+    3: "HDD",
+    4: "SSD",
+    5: "SCM",           # Storage Class Memory
+}
+# --- End Constants for Disk Info Enhancement ---
+
+
 def get_disk_drive_details(wmi_service): # Renamed from a comment block to a function definition
     """
     Lấy thông tin chi tiết về tất cả ổ cứng vật lý.
@@ -172,45 +190,111 @@ def get_disk_drive_details(wmi_service): # Renamed from a comment block to a fun
     if not wmi_service:
         return [{"Lỗi": ERROR_WMI_CONNECTION}] # Key tiếng Việt
     
+    msft_physical_disks_data = {}
+    try:
+        _local_com_init_storage = False
+        service_msft_storage = None
+        try:
+            win32com.client.pythoncom.CoInitialize()
+            _local_com_init_storage = True
+        except pywintypes.com_error:
+            logging.debug("COM already initialized for MSFT_PhysicalDisk query or different model.")
+
+        wmi_locator_msft = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+        service_msft_storage = wmi_locator_msft.ConnectServer(".", r"root\Microsoft\Windows\Storage")
+        logging.info("Successfully connected to WMI namespace root\\Microsoft\\Windows\\Storage for MSFT_PhysicalDisk.")
+        if service_msft_storage:
+            msft_disks_query = service_msft_storage.ExecQuery("SELECT DeviceId, BusType, MediaType, FriendlyName FROM MSFT_PhysicalDisk")
+            for disk_msft_raw in msft_disks_query:
+                dev_id = _get_wmi_property(disk_msft_raw, "DeviceId")
+                if dev_id is not None:
+                    msft_physical_disks_data[str(dev_id)] = {
+                        "BusType": _get_wmi_property(disk_msft_raw, "BusType", default_value=-1),
+                        "MediaType": _get_wmi_property(disk_msft_raw, "MediaType", default_value=-1),
+                        "FriendlyName": _get_wmi_property(disk_msft_raw, "FriendlyName", NOT_IDENTIFIED)
+                    }
+            logging.info(f"Fetched {len(msft_physical_disks_data)} entries from MSFT_PhysicalDisk.")
+    except (pywintypes.com_error, Exception) as e_msft:
+        logging.warning(f"Could not query MSFT_PhysicalDisk: {e_msft}. Falling back to Win32_DiskDrive only for extended info.")
+    finally:
+        if _local_com_init_storage:
+            win32com.client.pythoncom.CoUninitialize()
+            logging.debug("COM uninitialized for MSFT_PhysicalDisk query.")
     disk_details = []
     try:
-        # Chỉ lấy các thuộc tính cần thiết
-        disks = wmi_service.ExecQuery("SELECT Model, Size, MediaType, InterfaceType FROM Win32_DiskDrive")
+        # Query Win32_DiskDrive, ensure Index is included for matching with MSFT_PhysicalDisk.DeviceId
+        disks_w32_query = wmi_service.ExecQuery("SELECT Model, Size, MediaType, InterfaceType, Index, DeviceID FROM Win32_DiskDrive")
         # Kiểm tra xem có kết quả không trước khi lặp
-        disk_list = list(disks)
-        if not disk_list:
+        disk_w32_list = list(disks_w32_query)
+        if not disk_w32_list:
             return [{"Thông tin": f"{NOT_FOUND} ổ cứng vật lý nào."}] # Key tiếng Việt
 
-        for disk in disk_list:
-            model = _get_wmi_property(disk, "Model")
-            size = _get_wmi_property(disk, "Size", default_value=0)
-            media_type_code = _get_wmi_property(disk, "MediaType", default_value=0)
-            interface_type = _get_wmi_property(disk, "InterfaceType")
+        for disk_w32 in disk_w32_list:
+            model = _get_wmi_property(disk_w32, "Model")
+            size = _get_wmi_property(disk_w32, "Size", default_value=0)
+            disk_index_w32 = _get_wmi_property(disk_w32, "Index", default_value=-1) # Integer
+            
+            # Initialize with Win32_DiskDrive values as fallback
+            interface_type_str = _get_wmi_property(disk_w32, "InterfaceType")
+            media_type_str = NOT_IDENTIFIED
+
+            # Try to get more accurate info from MSFT_PhysicalDisk
+            disk_msft_info = msft_physical_disks_data.get(str(disk_index_w32))
+
+            if disk_msft_info:
+                logging.debug(f"Disk '{model}' (Index {disk_index_w32}): Found matching MSFT_PhysicalDisk entry (FriendlyName: {disk_msft_info.get('FriendlyName')}).")
+                # Get Interface Type from MSFT_PhysicalDisk.BusType
+                msft_bus_type_code = disk_msft_info.get("BusType", -1)
+                mapped_msft_interface = MSFT_BUS_TYPE_MAP.get(msft_bus_type_code)
+                if mapped_msft_interface and mapped_msft_interface not in ["Unknown", NOT_IDENTIFIED]:
+                    interface_type_str = mapped_msft_interface
+                    logging.debug(f"Disk '{model}': Using InterfaceType '{interface_type_str}' from MSFT_PhysicalDisk.BusType {msft_bus_type_code}.")
+                elif mapped_msft_interface == "Unknown" and interface_type_str in (None, "", NOT_IDENTIFIED, "Unknown"):
+                    interface_type_str = "Unknown" # If Win32 was also bad, use MSFT's Unknown
+
+                # Get Media Type from MSFT_PhysicalDisk.MediaType
+                msft_media_type_code = disk_msft_info.get("MediaType", -1)
+                mapped_msft_media = MSFT_MEDIA_TYPE_MAP.get(msft_media_type_code)
+                if mapped_msft_media and mapped_msft_media != NOT_IDENTIFIED:
+                    media_type_str = mapped_msft_media
+                    logging.debug(f"Disk '{model}': Using MediaType '{media_type_str}' from MSFT_PhysicalDisk.MediaType {msft_media_type_code}.")
+
+            # If MSFT_PhysicalDisk didn't provide a definitive media type, use Win32_DiskDrive.MediaType
+            if media_type_str == NOT_IDENTIFIED:
+                media_type_code_w32 = _get_wmi_property(disk_w32, "MediaType", default_value=0)
+                if media_type_code_w32 == 4: media_type_str = "SSD"
+                elif media_type_code_w32 == 3: media_type_str = "HDD"
+                elif media_type_code_w32 == 5: media_type_str = "SCM"
+                # else: media_type_str remains NOT_IDENTIFIED
+                if media_type_str != NOT_IDENTIFIED:
+                     logging.debug(f"Disk '{model}': Using MediaType '{media_type_str}' from Win32_DiskDrive.MediaType {media_type_code_w32}.")
+                elif disk_msft_info is None: # Only log if MSFT info was not available at all
+                     logging.debug(f"Disk '{model}': Win32_DiskDrive.MediaType {media_type_code_w32} did not map to a known type. MediaType remains '{media_type_str}'.")
 
             # Use > 0 check for size conversion
             size_gb = int(size) // (1024 ** 3) if size and int(size) > 0 else NOT_IDENTIFIED
 
-            # Ánh xạ MediaType sang chuỗi tiếng Việt
-            media_type_str = {
-                0: "Không xác định", 3: "HDD", 4: "SSD", 5: "SCM",
-            }.get(media_type_code, "Không xác định") # Simplified: media_type_code is already an int
+            # Final Heuristic: If determined InterfaceType is NVMe, it's an SSD.
+            if interface_type_str and isinstance(interface_type_str, str) and "NVMe" in interface_type_str:
+                if media_type_str != "SSD":
+                    logging.info(
+                        f"Disk '{model}': Final InterfaceType is '{interface_type_str}'. "
+                        f"Overriding MediaType from '{media_type_str}' to 'SSD'. "
+                    )
+                    media_type_str = "SSD"
 
             disk_info = {
                 "Kiểu máy": model,             # Key tiếng Việt
                 "Dung lượng (GB)": size_gb,   # Key tiếng Việt
-                "Giao tiếp": interface_type,  # Key tiếng Việt
-                "Loại phương tiện": media_type_str # <--- LUÔN THÊM TRƯỜNG NÀY
+                "Giao tiếp": interface_type_str if interface_type_str else NOT_IDENTIFIED,  # Key tiếng Việt
+                "Loại phương tiện": media_type_str
             }
-
-            # No more conditional addition
-
             disk_details.append(disk_info)
-
         # Trả về danh sách nếu có
         return disk_details
 
     except (pywintypes.com_error, Exception) as e:
-        logging.error(f"Lỗi khi lấy thông tin ổ cứng: {e}", exc_info=True)
+        logging.error(f"Lỗi khi xử lý thông tin ổ cứng: {e}", exc_info=True)
         return [{"Lỗi": f"{ERROR_FETCHING_INFO} ổ cứng: {e}"}] # Key tiếng Việt
 
 
@@ -734,6 +818,7 @@ def get_detailed_system_information():
         system_check_utilities_data["Thời gian hoạt động"] = get_system_uptime()
         system_check_utilities_data["Dung lượng ổ đĩa"] = get_disk_partitions_usage(wmi_service) # Logical partitions
         system_check_utilities_data["Tóm tắt Event Log gần đây"] = get_recent_event_log_summary(wmi_service) # Renamed key for clarity
+        system_check_utilities_data["Nhiệt độ hệ thống"] = get_system_temperatures() # Added system temperatures
 
         # --- Đóng gói kết quả ---
         result = {
@@ -782,6 +867,38 @@ def is_admin():
     except:
         return False
 
+# --- Helper function to find MpCmdRun.exe ---
+def _find_mpcmdrun_path():
+    """Finds the path to MpCmdRun.exe, trying multiple common locations."""
+    # Path 1: ProgramData (most reliable for MpCmdRun.exe's platform updates)
+    platform_base = r"C:\ProgramData\Microsoft\Windows Defender\Platform"
+    if os.path.exists(platform_base):
+        versions = [d for d in os.listdir(platform_base) if os.path.isdir(os.path.join(platform_base, d)) and not d.lower().startswith("settings")]
+        if versions:
+            try:
+                # Attempt robust version sorting if 'packaging' is available
+                from packaging.version import parse as parse_version
+                versions.sort(key=parse_version, reverse=True)
+                latest_version = versions[0]
+            except ImportError:
+                latest_version = sorted(versions, reverse=True)[0] # Fallback to lexicographical sort (descending)
+            
+            path = os.path.join(platform_base, latest_version, "MpCmdRun.exe")
+            if os.path.exists(path):
+                logging.debug(f"Found MpCmdRun.exe at: {path}")
+                return path
+
+    # Path 2: Program Files (fallback)
+    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+    path_pf = os.path.join(program_files, "Windows Defender", "MpCmdRun.exe")
+    if os.path.exists(path_pf):
+        logging.debug(f"Found MpCmdRun.exe at: {path_pf}")
+        return path_pf
+        
+    logging.warning("MpCmdRun.exe not found in common locations. Assuming it's in PATH.")
+    return "MpCmdRun.exe" # Assume it's in PATH as a last resort
+
+
 # --- Menu 2: TIỆN ÍCH (UTILITIES) - Additional Functions ---
 
 def run_windows_defender_scan(scan_type="QuickScan"):
@@ -794,27 +911,7 @@ def run_windows_defender_scan(scan_type="QuickScan"):
     if not is_admin():
         return {"status": "error", "message": "Yêu cầu quyền Administrator để chạy quét virus."}
     try:
-        # MpCmdRun.exe is typically in C:\ProgramData\Microsoft\Windows Defender\Platform\<version>\MpCmdRun.exe
-        # Or more reliably found via ProgramFiles environment variable
-        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-        defender_path = os.path.join(program_files, "Windows Defender", "MpCmdRun.exe")
-        if not os.path.exists(defender_path): # Fallback for older systems or different paths
-            # Try ProgramData path (more common for MpCmdRun)
-            # Listing directories in ProgramData\Microsoft\Windows Defender\Platform to find the latest version
-            platform_base = r"C:\ProgramData\Microsoft\Windows Defender\Platform"
-            if os.path.exists(platform_base):
-                versions = [d for d in os.listdir(platform_base) if os.path.isdir(os.path.join(platform_base, d))]
-                if versions:
-                    latest_version = sorted(versions)[-1]
-                    defender_path_alt = os.path.join(platform_base, latest_version, "MpCmdRun.exe")
-                    if os.path.exists(defender_path_alt):
-                        defender_path = defender_path_alt
-                    else: # Final fallback if specific version path also fails
-                        defender_path = "MpCmdRun.exe" # Hope it's in PATH
-                else: # If no version folders found
-                    defender_path = "MpCmdRun.exe"
-            else: # If ProgramData path doesn't exist
-                defender_path = "MpCmdRun.exe"
+        defender_path = _find_mpcmdrun_path()
 
         command = [defender_path, "-Scan", f"-ScanType", "1" if scan_type == "QuickScan" else "2"] # 1 for Quick, 2 for Full
         if scan_type == "CustomScan": # Placeholder, custom scan needs path
@@ -837,20 +934,7 @@ def update_windows_defender_definitions():
     if not is_admin():
         return {"status": "error", "message": "Yêu cầu quyền Administrator để cập nhật định nghĩa virus."}
     try:
-        # Similar path finding logic as run_windows_defender_scan
-        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-        defender_path = os.path.join(program_files, "Windows Defender", "MpCmdRun.exe")
-        if not os.path.exists(defender_path):
-            platform_base = r"C:\ProgramData\Microsoft\Windows Defender\Platform"
-            if os.path.exists(platform_base):
-                versions = [d for d in os.listdir(platform_base) if os.path.isdir(os.path.join(platform_base, d))]
-                if versions:
-                    latest_version = sorted(versions)[-1]
-                    defender_path_alt = os.path.join(platform_base, latest_version, "MpCmdRun.exe")
-                    if os.path.exists(defender_path_alt): defender_path = defender_path_alt
-                    else: defender_path = "MpCmdRun.exe"
-                else: defender_path = "MpCmdRun.exe"
-            else: defender_path = "MpCmdRun.exe"
+        defender_path = _find_mpcmdrun_path()
 
         command = [defender_path, "-SignatureUpdate"]
         logging.info(f"Đang chạy lệnh: {' '.join(command)}")
@@ -917,7 +1001,7 @@ def _get_installed_software_from_registry(hive, key_path, flags=0):
         logging.error(f"Lỗi khi đọc software từ Registry path '{key_path}': {e}", exc_info=True)
     return software_list
 
-def get_installed_software_versions(wmi_service):
+def get_installed_software_versions(wmi_service=None):
     """Lấy danh sách phần mềm đã cài đặt và phiên bản của chúng (qua Registry và winget)."""
     software_list = []
     processed_names = set() # Để tránh trùng lặp từ các nguồn khác nhau
@@ -930,10 +1014,9 @@ def get_installed_software_versions(wmi_service):
     # Trên hệ thống 64-bit, cũng kiểm tra view 32-bit của HKLM
     if platform.machine().endswith('64'):
         registry_paths.append((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"))
-
     for hive, path in registry_paths:
-        flags = winreg.KEY_WOW64_32KEY if r"WOW6432Node" in path else 0 # Không cần thiết vì WOW6432Node đã tường minh
-        apps_from_reg = _get_installed_software_from_registry(hive, path, flags=flags if hive == winreg.HKEY_LOCAL_MACHINE and r"WOW6432Node" not in path else 0)
+        # Simplified flags: OS handles redirection for explicit WOW6432Node paths. Default access is sufficient.
+        apps_from_reg = _get_installed_software_from_registry(hive, path, flags=0)
         for app in apps_from_reg:
             if app["Tên"] not in processed_names:
                 software_list.append(app)
@@ -1226,33 +1309,46 @@ def get_wifi_connection_info(wmi_service=None): # wmi_service can be optional if
         logging.error(f"Lỗi khi lấy thông tin Wi-Fi: {e}", exc_info=True)
         return {"Lỗi": f"{ERROR_FETCHING_INFO} Wi-Fi: {str(e)}"}
 
-def get_system_temperatures(wmi_service):
-    """Cố gắng lấy thông tin nhiệt độ hệ thống qua WMI (MSAcpi_ThermalZoneTemperature)."""
-    if not wmi_service:
-        return [{"Lỗi": ERROR_WMI_CONNECTION, "Chi tiết": "Không thể kiểm tra nhiệt độ."}]
+def get_system_temperatures(wmi_service=None): # Add wmi_service=None to match calls from WorkerThread
+    """
+    Cố gắng lấy thông tin nhiệt độ hệ thống qua WMI (MSAcpi_ThermalZoneTemperature).
+    Manages its own WMI connection to root\WMI.
+    """
     temps = []
+    _local_com_init_temp = False
+    service_root_wmi_temp = None
     try:
-        # Kết nối tới namespace root\WMI
-        wmi_root = win32com.client.Dispatch("WbemScripting.SWbemLocator")
-        service_root_wmi = wmi_root.ConnectServer(".", "root\\WMI")
-        thermal_zones = service_root_wmi.ExecQuery("SELECT InstanceName, CurrentTemperature FROM MSAcpi_ThermalZoneTemperature")
-        
-        for zone in thermal_zones:
-            name = _get_wmi_property(zone, "InstanceName", "Vùng không xác định")
-            # CurrentTemperature là Kelvin * 10. Chuyển sang Celsius: (K*10 - 273.15*10) / 10 = K - 273.15
-            temp_kelvin_tenths = _get_wmi_property(zone, "CurrentTemperature", 0)
-            temp_celsius = round(temp_kelvin_tenths / 10 - 273.15, 1) if temp_kelvin_tenths > 0 else NOT_AVAILABLE
-            temps.append({"Vùng": name, "Nhiệt độ (°C)": temp_celsius})
+        try:
+            win32com.client.pythoncom.CoInitialize()
+            _local_com_init_temp = True
+        except pywintypes.com_error:
+            logging.debug("COM already initialized for get_system_temperatures or different model.")
+
+        wmi_locator_temp = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+        service_root_wmi_temp = wmi_locator_temp.ConnectServer(".", "root\\WMI")
+        logging.info("Successfully connected to WMI namespace root\\WMI for temperature check.")
+
+        if service_root_wmi_temp:
+            thermal_zones = service_root_wmi_temp.ExecQuery("SELECT InstanceName, CurrentTemperature FROM MSAcpi_ThermalZoneTemperature")
+            for zone in thermal_zones:
+                name = _get_wmi_property(zone, "InstanceName", "Vùng không xác định")
+                temp_kelvin_tenths = _get_wmi_property(zone, "CurrentTemperature", 0)
+                temp_celsius = round(temp_kelvin_tenths / 10 - 273.15, 1) if temp_kelvin_tenths > 0 else NOT_AVAILABLE
+                temps.append({"Vùng": name, "Nhiệt độ (°C)": temp_celsius})
             
         if not temps:
             return [{"Thông tin": "Không tìm thấy thông tin nhiệt độ từ MSAcpi_ThermalZoneTemperature. Có thể không được hỗ trợ bởi phần cứng/driver."}]
-        return temps
     except (pywintypes.com_error, Exception) as e: # type: ignore
         logging.warning(f"Lỗi khi lấy nhiệt độ hệ thống: {e}", exc_info=True)
-        # Check if the error indicates the WMI class/namespace is not found
         if "Invalid class" in str(e) or "Invalid namespace" in str(e):
-            return [{"Lỗi": "Không thể truy cập WMI class cho nhiệt độ (MSAcpi_ThermalZoneTemperature). Driver có thể không hỗ trợ."}]
-        return [{"Lỗi": f"{ERROR_FETCHING_INFO} nhiệt độ: {str(e)}"}]
+            temps = [{"Lỗi": "Không thể truy cập WMI class cho nhiệt độ (MSAcpi_ThermalZoneTemperature). Driver có thể không hỗ trợ."}]
+        else:
+            temps = [{"Lỗi": f"{ERROR_FETCHING_INFO} nhiệt độ: {str(e)}"}]
+    finally:
+        if _local_com_init_temp:
+            win32com.client.pythoncom.CoUninitialize()
+            logging.debug("COM uninitialized for get_system_temperatures.")
+    return temps
 
 def get_running_processes(wmi_service=None): # wmi_service is optional as psutil is preferred
     """Lấy danh sách các tiến trình đang chạy sử dụng psutil."""
@@ -1475,33 +1571,150 @@ def toggle_firewall(enable=True):
         return {"status": "error", "message": f"Có lỗi xảy ra khi cố gắng {action_text} Windows Firewall.", "details": "\n".join(results)}
 
 # --- Các hàm mới được thêm (Placeholders) ---
+def _get_startup_items_from_registry(hive, key_path, architecture_flag=0):
+    """Helper to read startup items from a specific registry key."""
+    items = []
+    try:
+        with winreg.OpenKey(hive, key_path, 0, winreg.KEY_READ | architecture_flag) as reg_key:
+            i = 0
+            while True:
+                try:
+                    name, value, _ = winreg.EnumValue(reg_key, i)
+                    # Pre-calculate the string for the "Nguồn" field to avoid complex f-string parsing issues
+                    # The string 'SOFTWARE\\\\' evaluates to 'SOFTWARE\'
+                    split_token = 'SOFTWARE\\\\' 
+                    
+                    path_segment_for_display = key_path # Default to full key_path
+                    if split_token in key_path:
+                        # This replicates the original logic: take the part after 'SOFTWARE\'
+                        path_segment_for_display = key_path.split(split_token, 1)[1] if len(key_path.split(split_token, 1)) > 1 else ""
+
+                    source_description = f"Registry: {path_segment_for_display}"
+                    items.append({"Tên": name, "Lệnh": str(value), "Nguồn": source_description})
+                    i += 1
+                except OSError: # No more values
+                    break
+    except FileNotFoundError:
+        logging.debug(f"Startup registry key not found: {key_path}")
+    except Exception as e:
+        logging.warning(f"Error reading startup items from registry {key_path}: {e}")
+    return items
+
+def _get_startup_items_from_folder(folder_path, source_name):
+    """Helper to read startup items from a specific folder."""
+    items = []
+    if not os.path.isdir(folder_path):
+        logging.debug(f"Startup folder not found: {folder_path}")
+        return items
+    try:
+        for item_name in os.listdir(folder_path):
+            full_path = os.path.join(folder_path, item_name)
+            # Lấy target của shortcut nếu là file .lnk
+            if item_name.lower().endswith(".lnk"):
+                try:
+                    shell = win32com.client.Dispatch("WScript.Shell")
+                    shortcut = shell.CreateShortCut(full_path)
+                    target_path = shortcut.TargetPath
+                    arguments = shortcut.Arguments
+                    command = f'"{target_path}" {arguments}'.strip()
+                except Exception as e_lnk:
+                    logging.warning(f"Could not resolve shortcut {full_path}: {e_lnk}")
+                    command = full_path # Fallback to lnk path
+            else:
+                command = full_path
+            items.append({"Tên": item_name, "Lệnh": command, "Nguồn": source_name})
+    except Exception as e:
+        logging.warning(f"Error reading startup items from folder {folder_path}: {e}")
+    return items
+
 def get_startup_programs(wmi_service=None):
     """
     Lấy danh sách các chương trình khởi động cùng Windows.
-    (Placeholder - Cần triển khai logic chi tiết)
-    Có thể sử dụng WMI (Win32_StartupCommand), Registry, hoặc Task Scheduler.
+    Bao gồm Registry (Run, RunOnce) và thư mục Startup.
     """
-    logging.info("Placeholder: get_startup_programs được gọi.")
-    # Ví dụ trả về (cần thay thế bằng logic thực tế):
-    # return [{"Tên": "Ví dụ Startup App", "Lệnh": "C:\\Path\\To\\App.exe", "Vị trí": "Registry Run"}]
-    return [{"Thông tin": "Chức năng lấy danh sách chương trình khởi động chưa được triển khai đầy đủ."}]
+    startup_items = []
+    processed_commands = set() # Để tránh trùng lặp lệnh từ các nguồn khác nhau
+
+    # Registry paths
+    reg_paths = [
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+    ]
+    if platform.machine().endswith('64'): # Check 32-bit view on 64-bit OS for HKLM
+        reg_paths.append((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"))
+        reg_paths.append((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce"))
+
+    for hive, path in reg_paths:
+        items = _get_startup_items_from_registry(hive, path)
+        for item in items:
+            if item["Lệnh"] not in processed_commands:
+                startup_items.append(item)
+                processed_commands.add(item["Lệnh"])
+
+    # Startup folders
+    user_startup_path = os.path.join(os.environ['APPDATA'], r"Microsoft\Windows\Start Menu\Programs\Startup")
+    common_startup_path = os.path.join(os.environ['ALLUSERSPROFILE'], r"Microsoft\Windows\Start Menu\Programs\Startup")
+
+    folder_sources = [
+        (user_startup_path, "Thư mục Startup (Người dùng)"),
+        (common_startup_path, "Thư mục Startup (Chung)"),
+    ]
+    for folder_path, source_name in folder_sources:
+        items = _get_startup_items_from_folder(folder_path, source_name)
+        for item in items:
+            # Lọc bớt desktop.ini
+            if item["Tên"].lower() == "desktop.ini":
+                continue
+            # Kiểm tra trùng lặp lệnh một cách đơn giản hơn cho folder items
+            # (vì target của shortcut có thể giống nhau dù tên file .lnk khác)
+            # Đây là một kiểm tra cơ bản, có thể cần cải thiện nếu muốn độ chính xác cao hơn
+            is_duplicate = False
+            for existing_item in startup_items:
+                if existing_item["Lệnh"] == item["Lệnh"] and existing_item["Nguồn"].startswith("Thư mục Startup"):
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                 startup_items.append(item)
+
+    if not startup_items:
+        return [{"Thông tin": "Không tìm thấy chương trình nào khởi động cùng Windows từ các nguồn phổ biến."}]
+    return sorted(startup_items, key=lambda x: x['Tên'])
 
 def run_ping_test(host="google.com", count=4):
     """
     Thực hiện ping đến một host cụ thể.
     """
     logging.info(f"Thực hiện ping đến host={host}, count={count}.")
+
+    if not isinstance(host, str):
+        err_msg = f"Lỗi: Đối số 'host' cho ping phải là một chuỗi (string), nhận được: {host} (kiểu: {type(host).__name__})."
+        logging.error(err_msg)
+        return {"status": "error", "message": err_msg}
+
+    if not isinstance(count, int) or count <= 0:
+        err_msg = f"Lỗi: Đối số 'count' cho ping phải là một số nguyên dương hợp lệ, nhận được: {count}."
+        logging.error(err_msg)
+        return {"status": "error", "message": err_msg}
+
     try:
         # Xác định tham số ping cho Windows (-n) hoặc Linux/macOS (-c)
         param = '-n' if platform.system().lower() == 'windows' else '-c'
-        command = ['ping', param, str(count), host]
+        command = ['ping', param, str(count), str(host)] # Ensure host is also a string
 
         # Sử dụng CREATE_NO_WINDOW để ẩn cửa sổ console
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = subprocess.SW_HIDE
 
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', startupinfo=startupinfo)
+        # Use system's preferred encoding for potentially more robust output decoding
+        preferred_encoding = locale.getpreferredencoding(False)
+        if not preferred_encoding: # Fallback if locale.getpreferredencoding returns None
+            preferred_encoding = 'utf-8'
+            logging.warning("locale.getpreferredencoding(False) returned None, falling back to utf-8 for ping.")
+
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding=preferred_encoding, errors='ignore', startupinfo=startupinfo)
         stdout, stderr = process.communicate(timeout=30) # Tăng timeout cho ping
 
         if process.returncode == 0:
@@ -1518,16 +1731,148 @@ def run_ping_test(host="google.com", count=4):
         logging.error(f"Lỗi khi thực hiện ping đến {host}: {e}", exc_info=True)
         return {"status": "error", "message": f"Lỗi không xác định khi ping: {str(e)}"}
 
+def get_network_configuration_details(wmi_service):
+    """
+    Lấy thông tin cấu hình mạng chi tiết cho các adapter IPEnabled.
+    Bao gồm IP, Subnet, Gateway, DNS, MAC, DHCP status.
+    """
+    if not wmi_service:
+        return [{"Lỗi": ERROR_WMI_CONNECTION, "Chi tiết": "Không thể truy cập cấu hình mạng."}]
+
+    adapters_details = []
+    try:
+        query = "SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled = True"
+        adapters_config = wmi_service.ExecQuery(query)
+        
+        if not list(adapters_config): # Check if the query returned any results
+            return [{"Thông tin": "Không tìm thấy card mạng nào có IP được kích hoạt."}]
+
+        for adapter in adapters_config:
+            ip_addresses = _get_wmi_property(adapter, "IPAddress", [])
+            ip_subnets = _get_wmi_property(adapter, "IPSubnet", [])
+            default_gateways = _get_wmi_property(adapter, "DefaultIPGateway", [])
+            dns_servers = _get_wmi_property(adapter, "DNSServerSearchOrder", [])
+
+            details = {
+                "Card mạng": _get_wmi_property(adapter, "Description", NOT_IDENTIFIED),
+                "Địa chỉ MAC": _get_wmi_property(adapter, "MACAddress", NOT_IDENTIFIED),
+                "DHCP được bật": _get_wmi_property(adapter, "DHCPEnabled", NOT_AVAILABLE),
+                "Máy chủ DHCP": _get_wmi_property(adapter, "DHCPServer", NOT_AVAILABLE) if _get_wmi_property(adapter, "DHCPEnabled") else "Không áp dụng",
+                "Địa chỉ IP": ip_addresses if ip_addresses else [NOT_AVAILABLE],
+                "Subnet Mask": ip_subnets if ip_subnets else [NOT_AVAILABLE],
+                "Cổng mặc định": default_gateways if default_gateways else [NOT_AVAILABLE],
+                "Máy chủ DNS": dns_servers if dns_servers else [NOT_AVAILABLE]
+            }
+            # WMI returns single items not in lists, ensure they are for consistent processing
+            for key in ["Địa chỉ IP", "Subnet Mask", "Cổng mặc định", "Máy chủ DNS"]:
+                if not isinstance(details[key], list):
+                    details[key] = [details[key]] if details[key] is not None else [NOT_AVAILABLE]
+            
+            adapters_details.append(details)
+        
+        if not adapters_details: # Should be caught by the earlier check, but as a safeguard
+            return [{"Thông tin": "Không có thông tin cấu hình mạng chi tiết nào được tìm thấy."}]
+        return adapters_details
+
+    except (pywintypes.com_error, Exception) as e: # type: ignore
+        logging.error(f"Lỗi khi lấy thông tin cấu hình mạng: {e}", exc_info=True)
+        return [{"Lỗi": f"{ERROR_FETCHING_INFO} cấu hình mạng: {str(e)}"}]
+
 def create_system_restore_point(description="Điểm khôi phục tự động bởi PcInfoApp"):
     """
     Tạo một điểm khôi phục hệ thống. Yêu cầu quyền Admin.
-    (Placeholder - Cần triển khai logic chi tiết)
+    Sử dụng WMI SystemRestore class.
     """
-    logging.info(f"Placeholder: create_system_restore_point được gọi với mô tả: {description}.")
+    logging.info(f"Yêu cầu tạo điểm khôi phục hệ thống với mô tả: {description}")
     if not is_admin():
         return {"status": "error", "message": "Yêu cầu quyền Administrator để tạo điểm khôi phục hệ thống."}
-    # Logic tạo điểm khôi phục (ví dụ qua WMI SystemRestore class) sẽ ở đây.
-    return {"status": "info", "message": "Chức năng tạo điểm khôi phục hệ thống chưa được triển khai đầy đủ."}
+
+    com_initialized_rp = False
+    try:
+        win32com.client.pythoncom.CoInitialize()
+        com_initialized_rp = True
+        wmi_locator_rp = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+        # SystemRestore class is in root\default
+        service_rp = wmi_locator_rp.ConnectServer(".", r"root\default")
+        system_restore = service_rp.Get("SystemRestore")
+
+        # RPType: 0 (APPLICATION_INSTALL), 10 (MODIFY_SETTINGS), 12 (CANCELLED_OPERATION), etc.
+        # EventType: 100 (BEGIN_SYSTEM_CHANGE), 101 (END_SYSTEM_CHANGE)
+        # Using 0 for a generic application-triggered restore point.
+        result = system_restore.CreateRestorePoint(description, 0, 100)
+        return {"status": "success", "message": f"Đã yêu cầu tạo điểm khôi phục hệ thống. Kết quả: {result}. Kiểm tra System Restore để xác nhận."}
+    except (pywintypes.com_error, Exception) as e: # type: ignore
+        logging.error(f"Lỗi khi tạo điểm khôi phục hệ thống: {e}", exc_info=True)
+        return {"status": "error", "message": f"Không thể tạo điểm khôi phục: {str(e)}"}
+    finally:
+        if com_initialized_rp:
+            win32com.client.pythoncom.CoUninitialize()
+
+# --- Các hàm tiện ích mạng mới ---
+def lookup_dns_address(hostname):
+    """
+    Tra cứu địa chỉ IP của một hostname.
+    """
+    if not isinstance(hostname, str):
+        return {"status": "error", "message": f"Hostname phải là một chuỗi, nhận được: {type(hostname).__name__}"}
+    try:
+        # gethostbyname_ex trả về (hostname, aliaslist, ipaddrlist)
+        name, aliases, ipaddrs = socket.gethostbyname_ex(hostname)
+        result = {
+            "Hostname Chính": name,
+            "Địa chỉ IP": ipaddrs if ipaddrs else [NOT_AVAILABLE],
+        }
+        if aliases:
+            result["Tên Bí Danh (Aliases)"] = aliases
+        return {"status": "success", "message": f"Tra cứu DNS cho '{hostname}' thành công.", "details": result}
+    except socket.gaierror as e:
+        logging.error(f"Lỗi tra cứu DNS cho {hostname}: {e}", exc_info=True)
+        return {"status": "error", "message": f"Không thể phân giải hostname '{hostname}': {e}"}
+    except Exception as e:
+        logging.error(f"Lỗi không xác định khi tra cứu DNS cho {hostname}: {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi không xác định: {e}"}
+
+def get_active_network_connections():
+    """
+    Lấy danh sách các kết nối mạng đang hoạt động (tương tự netstat).
+    """
+    connections = []
+    try:
+        # kind='inet' bao gồm cả TCP và UDP, IPv4 và IPv6
+        # Bạn có thể lọc cụ thể hơn nếu muốn, ví dụ: kind='tcp4'
+        for conn in psutil.net_connections(kind='inet'):
+            conn_info = {
+                "Loại": conn.type, # SOCK_STREAM (TCP), SOCK_DGRAM (UDP)
+                "Địa chỉ Cục bộ": f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else NOT_AVAILABLE,
+                "Địa chỉ Từ xa": f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else NOT_AVAILABLE,
+                "Trạng thái": conn.status if conn.status else NOT_IDENTIFIED,
+                "PID": conn.pid if conn.pid else NOT_AVAILABLE
+            }
+            connections.append(conn_info)
+        
+        if not connections:
+            return [{"Thông tin": "Không có kết nối mạng nào đang hoạt động hoặc không thể truy cập."}]
+        return connections # Trả về list các dict
+    except Exception as e:
+        logging.error(f"Lỗi khi lấy danh sách kết nối mạng: {e}", exc_info=True)
+        return [{"Lỗi": f"{ERROR_FETCHING_INFO} kết nối mạng: {str(e)}"}]
+
+def flush_dns_cache():
+    """
+    Xóa cache DNS của hệ thống (ipconfig /flushdns).
+    Yêu cầu quyền Admin để có hiệu lực.
+    """
+    if not is_admin():
+        return {"status": "warning", "message": "Yêu cầu quyền Administrator để xóa cache DNS. Lệnh có thể không thành công."}
+    try:
+        process = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, text=True, timeout=15, check=True, creationflags=subprocess.CREATE_NO_WINDOW, encoding='oem', errors='ignore')
+        return {"status": "success", "message": "Đã thực hiện lệnh xóa cache DNS thành công.", "details": process.stdout.strip()}
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Lỗi khi xóa cache DNS (CalledProcessError): {e.stderr or e.stdout}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi khi chạy ipconfig /flushdns (code {e.returncode}). Chi tiết: {e.stderr.strip() or e.stdout.strip()}"}
+    except Exception as e:
+        logging.error(f"Lỗi không xác định khi xóa cache DNS: {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi không xác định: {e}"}
 
 # --- Hàm kiểm tra (nếu cần) ---
 if __name__ == "__main__":

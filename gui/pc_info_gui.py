@@ -109,13 +109,13 @@ class PcInfoApp(tk.Tk):
 
         self.style.configure('.', font=DEFAULT_FONT, background=BG_COLOR, foreground=TEXT_COLOR)
         self.style.configure('TFrame', background=BG_COLOR)
-        self.style.configure('TLabel', background=BG_COLOR, foreground=TEXT_COLOR, padding=5)
-        self.style.configure('TButton', font=BOLD_FONT, padding=(6, 3)) # Default button style - Reduced padding
+        self.style.configure('TLabel', background=BG_COLOR, foreground=TEXT_COLOR, padding=5) # Keep padding for general labels
+        self.style.configure('TButton', font=DEFAULT_FONT, padding=(6, 3)) # Changed from BOLD_FONT to DEFAULT_FONT
         self.style.configure('Header.TLabel', font=("Segoe UI", 16, "bold"), background=BG_COLOR)
         self.style.configure('TLabelframe', background=BG_COLOR, bordercolor=ACCENT_COLOR, relief=tk.SOLID)
-        self.style.configure('TLabelframe.Label', background=BG_COLOR, foreground=TEXT_COLOR, font=BOLD_FONT)
-        self.style.configure('TNotebook', background=BG_COLOR, borderwidth=1)
-        self.style.configure('TNotebook.Tab', font=DEFAULT_FONT, padding=(10, 5), background=ACCENT_COLOR)
+        self.style.configure('TLabelframe.Label', background=BG_COLOR, foreground=TEXT_COLOR, font=BOLD_FONT) # Reverted to BOLD_FONT
+        self.style.configure('TNotebook', background=BG_COLOR, borderwidth=1) # Keep border for notebook itself
+        self.style.configure('TNotebook.Tab', font=BOLD_FONT, padding=(10, 5), background=ACCENT_COLOR) # Changed to BOLD_FONT
         self.style.map('TNotebook.Tab', background=[('selected', BG_COLOR)], foreground=[('selected', TEXT_COLOR)])
         # self.style.configure('Treeview', font=DEFAULT_FONT, rowheight=25) # Example if Treeview is used
         # self.style.configure('Treeview.Heading', font=BOLD_FONT)
@@ -160,11 +160,13 @@ class PcInfoApp(tk.Tk):
         top_frame.pack(pady=(10,5), padx=20, fill=tk.X) # Reduced pady bottom
 
         if self.logo_photo: # Check if logo was loaded successfully
-            logo_display_label = ttk.Label(top_frame, image=self.logo_photo, style='TLabel')
-            logo_display_label.pack(side=tk.LEFT, padx=(0, 15), pady=5) # Adjust padding
+            logo_display_label = ttk.Label(top_frame, image=self.logo_photo, style='TLabel') # Create logo label first
 
         app_title_label = ttk.Label(top_frame, text="Công Cụ Hỗ Trợ PC", style='Header.TLabel')
         app_title_label.pack(side=tk.LEFT, pady=5) # Title flows after logo
+
+        if self.logo_photo: # Pack logo after title, to the right
+            logo_display_label.pack(side=tk.RIGHT, padx=(15, 0), pady=5) # Adjust padding for right alignment
 
         # --- Notebook for different sections ---
         self.notebook = ttk.Notebook(self)
@@ -172,7 +174,7 @@ class PcInfoApp(tk.Tk):
 
         # --- Tab: Trang chủ ---
         self.tab_home = ttk.Frame(self.notebook, padding=15, style='TFrame') # Increased padding
-        self.notebook.add(self.tab_home, text="Trang chủ")
+        self.notebook.add(self.tab_home, text="Trang Chủ")
         self._create_home_tab(self.tab_home)
 
         # --- Tab: Tiện ích ---
@@ -182,7 +184,7 @@ class PcInfoApp(tk.Tk):
 
         # --- Tab: Sửa lỗi hệ thống ---
         self.tab_fixes = ttk.Frame(self.notebook, padding=15, style='TFrame')
-        self.notebook.add(self.tab_fixes, text="Sửa lỗi hệ thống")
+        self.notebook.add(self.tab_fixes, text="Sửa Lỗi Hệ Thống")
         self._create_fixes_tab(self.tab_fixes)
 
         # --- Global Buttons Frame (Xuất file, Thoát) ---
@@ -191,7 +193,7 @@ class PcInfoApp(tk.Tk):
 
         # Nút "Xuất Dữ liệu PC" chỉ còn ở tab Trang chủ (logic xử lý trong on_export_info)
         # Chúng ta sẽ thêm nút "Lưu Kết Quả" vào các tab Tiện ích và Sửa lỗi sau
-        self.button_export_home = ttk.Button(frame_global_buttons, text="Xuất Dữ liệu PC (Trang chủ)", command=self.on_export_info, width=25, style='Export.TButton', state=tk.DISABLED)
+        self.button_export_home = ttk.Button(frame_global_buttons, text="Xuất Dữ liệu PC", command=self.on_export_info, width=25, style='Export.TButton', state=tk.DISABLED)
         self.button_export_home.pack(side=tk.LEFT, padx=(0,10))
 
         self.style.configure('Exit.TButton', background=BUTTON_DANGER_BG, foreground="black") # Darker text for pink
@@ -249,7 +251,7 @@ class PcInfoApp(tk.Tk):
 
         # --- Button to refresh Home tab info ---
         self.style.configure('RefreshHome.TButton', background=BUTTON_PRIMARY_BG, foreground="black") # Darker text for light blue
-        self.button_refresh_home = ttk.Button(parent_tab, text="Làm mới Dữ liệu PC", command=self.fetch_pc_info_threaded, width=25, style='RefreshHome.TButton')
+        self.button_refresh_home = ttk.Button(parent_tab, text="Làm mới", command=self.fetch_pc_info_threaded, width=25, style='RefreshHome.TButton')
         self.button_refresh_home.pack(pady=(10,5)) # Added bottom padding
 
     def _create_utilities_tab(self, parent_tab):
@@ -339,7 +341,7 @@ class PcInfoApp(tk.Tk):
 
         self.button_save_utility_result = ttk.Button(utils_results_buttons_frame, text="Lưu Kết Quả", command=lambda: self.save_tab_result(self.text_utilities_results, "KetQua_TienIch"), width=20, state=tk.DISABLED)
         self.button_save_utility_result.pack(side=tk.RIGHT, padx=(5,0))
-        btn_ping_test = ttk.Button(utils_results_buttons_frame, text="Kiểm Tra Ping (google.com)", command=self.run_ping_google, width=25)
+        btn_ping_test = ttk.Button(utils_results_buttons_frame, text="Ping (google.com)", command=self.run_ping_google, width=25)
         btn_ping_test.pack(side=tk.LEFT, padx=(0,5))
 
     def _create_fixes_tab(self, parent_tab):

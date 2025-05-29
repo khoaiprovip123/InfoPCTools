@@ -188,7 +188,7 @@ def format_system_details_to_string(system_info_data_dict):
     """
     Định dạng phần "SystemInformation" của dữ liệu PC thành chuỗi dễ đọc.
     """
-    output_lines = ["--- THÔNG TIN HỆ THỐNG ---", ""] # Tiêu đề và dòng trống
+    output_lines = ["**--- THÔNG TIN HỆ THỐNG ---**", ""] # Tiêu đề và dòng trống
     pc_data = system_info_data_dict.get("PC", {})
     screen_data = system_info_data_dict.get("Màn hình", [])
 
@@ -209,15 +209,20 @@ def format_system_details_to_string(system_info_data_dict):
     # CPU
     cpu_info = pc_data.get("CPU", {})
     output_lines.append("  CPU:")
-    if isinstance(cpu_info, dict) and cpu_info:
+    if isinstance(cpu_info, dict) and cpu_info: # cpu_info is like {"Kiểu máy": "...", "Số lõi": ..., "Số luồng": ...}
         cpu_model = cpu_info.get("Kiểu máy", NOT_IDENTIFIED)
         cores = cpu_info.get("Số lõi", NOT_AVAILABLE)
         threads = cpu_info.get("Số luồng", NOT_AVAILABLE)
+
+        # Hiển thị kiểu máy CPU, ngay cả khi là lỗi hoặc không xác định
+        output_lines.append(f"    Kiểu máy: {cpu_model}")
+        
+        # Hiển thị số lõi và số luồng
         output_lines.append(f"    Số lõi: {cores}")
         output_lines.append(f"    Số luồng: {threads}")
     else:
         # Trường hợp lỗi lấy cả cụm CPU hoặc cpu_info không phải dict
-        output_lines.append(f"    {ERROR_FETCHING_INFO}")
+        output_lines.append(f"    {ERROR_FETCHING_INFO} (Không có thông tin chi tiết CPU)")
 
     # RAM
     ram_info = pc_data.get("Bộ nhớ RAM", ERROR_FETCHING_INFO)
@@ -289,48 +294,65 @@ def format_system_checks_to_string(system_checks_data_dict):
     Định dạng phần "SystemCheckUtilities" của dữ liệu PC thành chuỗi dễ đọc.
     """
     output_lines = [] # Bắt đầu list rỗng, tiêu đề sẽ được thêm nếu có dữ liệu
-    if system_checks_data_dict and not (len(system_checks_data_dict) == 1 and "Lỗi" in system_checks_data_dict):
-        output_lines.append("--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---")
-        output_lines.append("")
 
-        uptime = system_checks_data_dict.get("Thời gian hoạt động", NOT_AVAILABLE)
-        output_lines.append(f"**Thời gian hoạt động hệ thống:** {uptime}\n")
+    if not system_checks_data_dict: # Handles None or empty dict {}
+        # Nếu muốn luôn hiển thị section này ngay cả khi không có dữ liệu:
+        # output_lines.append("**--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---**")
+        # output_lines.append("")
+        # output_lines.append(f"  {NOT_AVAILABLE}")
+        return "\n".join(output_lines) # Trả về sớm nếu không có dữ liệu
 
-        disk_usage_list = system_checks_data_dict.get("Dung lượng ổ đĩa", [])
-        output_lines.append("**Dung lượng ổ đĩa (Fixed Disks):**")
-        def format_disk_usage_item(disk_item):
-            name = disk_item.get("Ổ đĩa", NOT_IDENTIFIED)
-            vol_name = disk_item.get("Tên ổ đĩa", "")
-            total = disk_item.get("Tổng (GB)", NOT_AVAILABLE)
-            free = disk_item.get("Còn trống (GB)", NOT_AVAILABLE)
-            percent_free = disk_item.get("Tỷ lệ trống (%)", NOT_AVAILABLE)
-            status = disk_item.get("Trạng thái", "")
-
-            if status and NOT_AVAILABLE in str(status):
-                return [f"{name} ({vol_name}): {status}"]
-            else:
-                lines = [f"{name} ({vol_name}): Còn trống {free} GB ({percent_free}%) - Tổng: {total} GB"]
-                if status and status != STATUS_OK:
-                    lines.append(f"Trạng thái: {status}")
-                return lines
-        output_lines.extend(_format_list_of_dicts(disk_usage_list, "Ổ đĩa", format_disk_usage_item))
-        output_lines.append("") # Dòng trống sau section
-
-        event_log_summary = system_checks_data_dict.get("Tóm tắt Event Log gần đây", {})
-        output_lines.append("**Tóm tắt Event Log (24 giờ qua):**")
-        if isinstance(event_log_summary, dict) and "Lỗi" not in event_log_summary:
-            output_lines.append(f"  System Log: {event_log_summary.get('System', {}).get('Errors', 0)} Lỗi, {event_log_summary.get('System', {}).get('Warnings', 0)} Cảnh báo")
-            output_lines.append(f"  Application Log: {event_log_summary.get('Application', {}).get('Errors', 0)} Lỗi, {event_log_summary.get('Application', {}).get('Warnings', 0)} Cảnh báo")
-            if event_log_summary.get("Ghi chú"): output_lines.append(f"  {event_log_summary['Ghi chú']}")
-        else: output_lines.append(f"  {event_log_summary.get('Lỗi', ERROR_FETCHING_INFO)} {event_log_summary.get('Chi tiết', '')}".strip())
-    elif system_checks_data_dict and "Lỗi" in system_checks_data_dict:
-        output_lines.append("--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---")
+    if isinstance(system_checks_data_dict, dict) and "Lỗi" in system_checks_data_dict:
+        output_lines.append("**--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---**")
         output_lines.append("")
         output_lines.append(f"Lỗi khi lấy thông tin kiểm tra hệ thống: {system_checks_data_dict['Lỗi']}")
-    else:
-        output_lines.append("--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---")
-        output_lines.append("")
-        output_lines.append(f"{NOT_AVAILABLE}")
+        return "\n".join(output_lines) # Trả về sớm nếu có lỗi tổng thể
+
+    # Nếu không có lỗi tổng thể và có dữ liệu
+    output_lines.append("**--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---**")
+    output_lines.append("")
+
+    uptime = system_checks_data_dict.get("Thời gian hoạt động", NOT_AVAILABLE)
+    output_lines.append(f"**Thời gian hoạt động hệ thống:**\n  {uptime}\n")
+
+    disk_usage_list = system_checks_data_dict.get("Dung lượng ổ đĩa", [])
+    output_lines.append("**Dung lượng ổ đĩa (Fixed Disks):**")
+    def format_disk_usage_item(disk_item):
+        name = disk_item.get("Ổ đĩa", NOT_IDENTIFIED)
+        vol_name = disk_item.get("Tên ổ đĩa", "")
+        total = disk_item.get("Tổng (GB)", NOT_AVAILABLE)
+        free = disk_item.get("Còn trống (GB)", NOT_AVAILABLE)
+        percent_free = disk_item.get("Tỷ lệ trống (%)", NOT_AVAILABLE)
+        status = disk_item.get("Trạng thái", "")
+
+        if status and NOT_AVAILABLE in str(status):
+            return [f"{name} ({vol_name}): {status}"] # Bỏ thụt lề '  '
+        else:
+            lines = [f"{name} ({vol_name}): Còn trống {free} GB ({percent_free}%) - Tổng: {total} GB"] # Bỏ thụt lề '  '
+            if status and status != STATUS_OK:
+                lines.append(f"  Trạng thái: {status}") # Giữ thụt lề '  ' cho dòng con
+            return lines
+    output_lines.extend(_format_list_of_dicts(disk_usage_list, "Ổ đĩa", format_disk_usage_item))
+    output_lines.append("") # Thêm dòng trống cuối section
+
+    event_log_summary = system_checks_data_dict.get("Tóm tắt Event Log gần đây", {})
+    output_lines.append("**Tóm tắt Event Log (24 giờ qua):**")
+    if isinstance(event_log_summary, dict) and "Lỗi" not in event_log_summary and event_log_summary: # Thêm kiểm tra event_log_summary không rỗng
+        output_lines.append(f"  System Log: {event_log_summary.get('System', {}).get('Errors', 0)} Lỗi, {event_log_summary.get('System', {}).get('Warnings', 0)} Cảnh báo")
+        output_lines.append(f"  Application Log: {event_log_summary.get('Application', {}).get('Errors', 0)} Lỗi, {event_log_summary.get('Application', {}).get('Warnings', 0)} Cảnh báo")
+        if event_log_summary.get("Ghi chú"): output_lines.append(f"  {event_log_summary['Ghi chú']}")
+    elif isinstance(event_log_summary, dict) and event_log_summary.get("Lỗi"):
+        output_lines.append(f"  Lỗi: {event_log_summary['Lỗi']} {event_log_summary.get('Chi tiết', '')}".strip())
+    else: # Trường hợp event_log_summary là rỗng hoặc không có key "Lỗi"
+        output_lines.append(f"  {NOT_AVAILABLE}")
+    output_lines.append("")
+
+    temperatures = system_checks_data_dict.get("Nhiệt độ hệ thống", [])
+    output_lines.append("**Nhiệt độ Hệ thống:**")
+    def format_temp_item(temp_item):
+        return [f"{temp_item.get('Vùng', NOT_IDENTIFIED)}: {temp_item.get('Nhiệt độ (°C)', NOT_AVAILABLE)} °C"] # Bỏ thụt lề '  '
+    output_lines.extend(_format_list_of_dicts(temperatures, "Cảm biến", format_temp_item))
+    output_lines.append("")
 
     return "\n".join(output_lines)
 
@@ -353,12 +375,32 @@ def format_pc_info_to_string(pc_info_dict):
     # --- Lỗi gặp phải (Nếu có) ---
     errors = pc_info_dict.get("Lỗi gặp phải")
     if errors:
-        all_output_lines.append("\n\n**Lỗi gặp phải trong quá trình lấy thông tin:**") # Tiêu đề rõ ràng hơn
+        all_output_lines.append("\n\n**--- LỖI GẶP PHẢI TRONG QUÁ TRÌNH LẤY THÔNG TIN ---**") # Tiêu đề rõ ràng hơn
         all_output_lines.append(f"  {errors}")
 
     # Kết hợp các dòng thành một chuỗi duy nhất
     return "\n".join(all_output_lines).strip()
 # --- Khối Kiểm Tra (Có thể xóa hoặc cập nhật nếu cần) ---
+
+# --- Hàm Định dạng Thông tin Người dùng cho Hiển thị/File ---
+def format_user_info_for_display(user_info_dict):
+    """
+    Định dạng thông tin người dùng từ dictionary thành chuỗi dễ đọc cho file xuất.
+    """
+    if not isinstance(user_info_dict, dict):
+        return "Lỗi: Dữ liệu người dùng không hợp lệ."
+
+    lines = ["**--- THÔNG TIN NGƯỜI DÙNG ---**"]
+    user_info_map = {
+        "Name": "Tên người dùng",
+        "Department": "Phòng Ban",
+        "Floor": "Vị Trí Tầng",
+        "Position": "Chức Vụ",
+        "Notes": "Ghi Chú"
+    }
+    for key, display_name in user_info_map.items():
+        lines.append(f"  {display_name}: {user_info_dict.get(key, '').strip() or NOT_AVAILABLE}")
+    return "\n".join(lines)
 if __name__ == "__main__": # Giữ lại 1 khối main để test
     print("Đang thu thập thông tin PC để kiểm tra định dạng...")
     # Đảm bảo import get_pc_info từ module functions
