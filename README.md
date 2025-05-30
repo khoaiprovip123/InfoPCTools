@@ -10,11 +10,8 @@
 - ... (add more features as needed)
 
 ## Usage
-
 [Explain how to install and run your application. Include any prerequisites.]
-
 ## Contributing (Optional)
-
 [If you're open to contributions, explain how others can contribute.]
 # InfoPCTools
-# InfoPCTools
+
