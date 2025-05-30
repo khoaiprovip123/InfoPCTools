@@ -4,12 +4,14 @@ import sys
 import os
 import logging
 import html # Thêm import html để escape nội dung
+import csv # Import the csv module
 from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QTabWidget,
-    QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame
+    QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QCheckBox
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor, QTextCharFormat, QTextCursor
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
@@ -47,7 +49,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 DEFAULT_FONT_FAMILY = "Roboto"
 DEFAULT_FONT_SIZE = 10 # Decreased font size
 MONOSPACE_FONT_FAMILY = "Consolas"
-MONOSPACE_FONT_SIZE = 9 # Decreased font size
+MONOSPACE_FONT_SIZE = 9
 HIGHLIGHT_COLOR = QColor(255, 236, 179) # Material Amber A100 (FFECB3) for text search
 
 # New Color Palette (Material Design inspired)
@@ -62,12 +64,18 @@ ACCENT_COLOR = "#03A9F4"     # Light Blue 500 (Primary accent for highlights, ac
 ACCENT_COLOR_HOVER = "#039BE5"  # Light Blue 600
 ACCENT_COLOR_PRESSED = "#0288D1" # Light Blue 700
 
-BUTTON_BG_NORMAL = "#E0E0E0" # Grey 300 (Neutral buttons)
-BUTTON_BG_HOVER = "#D6D6D6"
-BUTTON_BG_PRESSED = "#BDBDBD" # Grey 400
+BUTTON_PRIMARY_BG = ACCENT_COLOR
+BUTTON_PRIMARY_HOVER = ACCENT_COLOR_HOVER
+BUTTON_PRIMARY_PRESSED = ACCENT_COLOR_PRESSED
 
-BUTTON_EXPORT_BG = "#4CAF50" # Green 500
+BUTTON_SECONDARY_BG = "#CFD8DC" # Blue Grey 100
+BUTTON_SECONDARY_HOVER = "#B0BEC5" # Blue Grey 200
+BUTTON_SECONDARY_PRESSED = "#90A4AE" # Blue Grey 300
+BUTTON_SECONDARY_TEXT = TEXT_COLOR_PRIMARY
+
+BUTTON_EXPORT_BG = "#4CAF50"  # Green 500
 BUTTON_EXPORT_HOVER = "#43A047" # Green 600
+BUTTON_EXPORT_PRESSED = "#388E3C" # Green 700
 BUTTON_DANGER_BG = "#F44336"  # Red 500
 BUTTON_DANGER_HOVER = "#E53935" # Red 600
 
@@ -103,6 +111,8 @@ class WorkerThread(QThread):
         self.task_function = task_function
         self.task_name = task_name
         self.needs_wmi = needs_wmi
+        self.button_to_manage = kwargs.pop('button_to_manage', None) # Get the button
+        self.original_button_text = kwargs.pop('original_button_text', "")
         self.wmi_namespace = wmi_namespace # Namespace WMI cần thiết cho tác vụ
         self.args = args
         self.kwargs = kwargs
@@ -110,6 +120,10 @@ class WorkerThread(QThread):
         self.com_initialized_local = False
 
     def run(self):
+        if self.button_to_manage:
+            self.button_to_manage.setEnabled(False)
+            self.button_to_manage.setText("Đang xử lý...")
+
         result_data = None
         try:
             if self.needs_wmi:
@@ -138,6 +152,9 @@ class WorkerThread(QThread):
                     logging.info(f"COM uninitialized in thread for task: {self.task_name}")
                 except Exception as com_e:
                     logging.error(f"Error uninitializing COM in thread for {self.task_name}: {com_e}")
+            if self.button_to_manage:
+                self.button_to_manage.setText(self.original_button_text)
+                self.button_to_manage.setEnabled(True)
 
 class PcInfoAppQt(QMainWindow):
     def __init__(self):
@@ -151,7 +168,8 @@ class PcInfoAppQt(QMainWindow):
 
         # --- State Variables ---
         self.pc_info_dict = None
-        self.formatted_pc_info_string_home = "Chưa lấy thông tin."
+        # self.formatted_pc_info_string_home = "Chưa lấy thông tin." # No longer needed as we populate cards
+        self.current_table_data = None # To store data for CSV export
 
         self.threads = [] # List để giữ các QThread đang chạy
 
@@ -203,6 +221,7 @@ class PcInfoAppQt(QMainWindow):
         
         self.greeting_label = QLabel("Chào bạn!") # Default greeting
         self.greeting_label.setFont(font_title) # Sử dụng font của tiêu đề cũ
+        self.greeting_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
         header_row_layout.addWidget(self.greeting_label)
         header_row_layout.addStretch(1)
         # Global Search Bar will be moved to be alongside the TabWidget
@@ -255,7 +274,7 @@ class PcInfoAppQt(QMainWindow):
         global_buttons_frame = QFrame()
         global_buttons_layout = QHBoxLayout(global_buttons_frame)
 
-        self.button_export_home = QPushButton("Xuất Dữ liệu PC")
+        self.button_export_home = QPushButton("Xuất Báo Cáo PC")
         self.button_export_home.setFont(self.default_font)
         self.button_export_home.setFixedWidth(200)
         self.button_export_home.setCursor(Qt.PointingHandCursor)
@@ -263,8 +282,17 @@ class PcInfoAppQt(QMainWindow):
         self.button_export_home.setEnabled(False)
         global_buttons_layout.addWidget(self.button_export_home)
         global_buttons_layout.addStretch(1)
+        
+        self.button_export_csv = QPushButton("Xuất CSV (Bảng)")
+        self.button_export_csv.setFont(self.default_font)
+        self.button_export_csv.setFixedWidth(150)
+        self.button_export_csv.setCursor(Qt.PointingHandCursor)
+        self.button_export_csv.clicked.connect(self.on_export_csv_qt)
+        self.button_export_csv.setVisible(False) # Initially hidden
+        global_buttons_layout.addWidget(self.button_export_csv)
+        # global_buttons_layout.addStretch(1) # Removed to keep export buttons together
 
-        self.button_exit = QPushButton("Thoát Ứng Dụng")
+        self.button_exit = QPushButton("Thoát")
         self.button_exit.setFont(self.default_font)
         self.button_exit.setFixedWidth(150)
         self.button_exit.setCursor(Qt.PointingHandCursor)
@@ -278,65 +306,96 @@ class PcInfoAppQt(QMainWindow):
         layout.setSpacing(15)
 
         # --- User Info Frame (QGroupBox) ---
-        group_user_info = QGroupBox("Thông tin người dùng (cho file xuất)")
+        group_user_info = QGroupBox("Thông tin người dùng (cho báo cáo)")
         group_user_info.setFont(self.bold_font)
         layout.addWidget(group_user_info)
-        user_info_form_layout = QGridLayout(group_user_info) # Sử dụng QGridLayout
+        user_info_grid_layout = QGridLayout(group_user_info) # Đổi tên để rõ ràng hơn
+        group_user_info.setObjectName("UserInfoGroup")
 
-        # Tên
-        user_info_form_layout.addWidget(QLabel("Tên:"), 0, 0)
+        # Dòng 1: Tên và Phòng Ban
+        user_info_grid_layout.addWidget(QLabel("Tên:"), 0, 0)
         self.entry_name_qt = QLineEdit()
         self.entry_name_qt.setFont(self.default_font)
-        user_info_form_layout.addWidget(self.entry_name_qt, 0, 1, 1, 3) # row, col, rowspan, colspan
+        user_info_grid_layout.addWidget(self.entry_name_qt, 0, 1)
 
-        # Phòng Ban
-        user_info_form_layout.addWidget(QLabel("Phòng Ban:"), 1, 0)
+        user_info_grid_layout.addWidget(QLabel("Phòng Ban:"), 0, 2)
         self.entry_department_qt = QLineEdit()
         self.entry_department_qt.setFont(self.default_font)
-        user_info_form_layout.addWidget(self.entry_department_qt, 1, 1, 1, 3)
+        user_info_grid_layout.addWidget(self.entry_department_qt, 0, 3) # Phòng ban ở cột 3
 
-        # Vị Trí Tầng
-        user_info_form_layout.addWidget(QLabel("Vị Trí Tầng:"), 2, 0)
+        # Dòng 1: Vị Trí Tầng (cột 0, 1) và ô nhập tầng tùy chỉnh (cột 2, 3 - sẽ được quản lý bởi on_floor_change_qt)
+        # Đảm bảo label "Nhập vị trí hiện tại" dùng font mặc định
+        user_info_grid_layout.addWidget(QLabel("Vị Trí:"), 1, 0) # Đổi tên label
         self.combo_floor_qt = QComboBox()
         self.combo_floor_qt.setFont(self.default_font)
         self.combo_floor_qt.addItems(["Tầng G", "Lầu 1", "Lầu 2", "Khác"])
         self.combo_floor_qt.currentIndexChanged.connect(self.on_floor_change_qt)
-        user_info_form_layout.addWidget(self.combo_floor_qt, 2, 1)
+        user_info_grid_layout.addWidget(self.combo_floor_qt, 1, 1) # ComboBox ở cột 1
 
-        self.entry_custom_floor_label_qt = QLabel("Nhập vị trí hiện tại:")
+        self.entry_custom_floor_label_qt = QLabel("Vị trí khác:") # Đổi text 
+        self.entry_custom_floor_label_qt.setFont(self.bold_font) # Đổi sang font in đậm
         self.entry_custom_floor_qt = QLineEdit()
         self.entry_custom_floor_qt.setFont(self.default_font)
-        user_info_form_layout.addWidget(self.entry_custom_floor_label_qt, 2, 2)
-        user_info_form_layout.addWidget(self.entry_custom_floor_qt, 2, 3)
+        # Sẽ được thêm/xóa bởi on_floor_change_qt, không thêm vào layout cố định ở đây
         self.on_floor_change_qt() # Initial state
 
-        # Chức Vụ
-        user_info_form_layout.addWidget(QLabel("Chức Vụ:"), 3, 0)
+        # Dòng 2: Chức Vụ (cột 0,1) và Checkbox Ghi chú (cột 2)
+        user_info_grid_layout.addWidget(QLabel("Chức Vụ:"), 2, 0) # Chức Vụ ở dòng 2, cột 0
         self.entry_position_qt = QLineEdit()
         self.entry_position_qt.setFont(self.default_font)
-        user_info_form_layout.addWidget(self.entry_position_qt, 3, 1, 1, 3)
+        user_info_grid_layout.addWidget(self.entry_position_qt, 2, 1) # Ô nhập Chức Vụ ở dòng 2, cột 1 (không kéo dài)
 
-        # Ghi chú
-        user_info_form_layout.addWidget(QLabel("Ghi chú:"), 4, 0, Qt.AlignTop)
+        self.checkbox_show_notes = QCheckBox("Ghi chú")
+        self.checkbox_show_notes.setFont(self.default_font)
+        self.checkbox_show_notes.toggled.connect(self.toggle_notes_visibility)
+        user_info_grid_layout.addWidget(self.checkbox_show_notes, 2, 2, 1, 2) # Checkbox ở dòng 2, cột 2, kéo dài 2 cột còn lại
+
+
+        # Dòng 3: Ghi chú (ẩn/hiện) - đã được dời xuống
+        self.label_notes_qt = QLabel("Ghi chú:")
+        self.label_notes_qt.setFont(self.default_font)
         self.text_notes_qt = QTextEdit()
         self.text_notes_qt.setFont(self.default_font)
         self.text_notes_qt.setFixedHeight(60) # Giới hạn chiều cao
-        user_info_form_layout.addWidget(self.text_notes_qt, 4, 1, 1, 3)
+        user_info_grid_layout.addWidget(self.label_notes_qt, 3, 0, Qt.AlignTop) # Label Ghi chú ở dòng 3, cột 0
+        user_info_grid_layout.addWidget(self.text_notes_qt, 3, 1, 1, 3) # Ô nhập Ghi chú ở dòng 3, cột 1, kéo dài 3 cột
 
-        user_info_form_layout.setColumnStretch(1, 1) # Cho cột input mở rộng
-        user_info_form_layout.setColumnStretch(3, 1) # Giữ stretch cho cột 3 để căn chỉnh custom floor
+        self.toggle_notes_visibility(False) # Ẩn ghi chú ban đầu
 
-        # --- System Info Display (QGroupBox + QTextEdit) ---
-        group_system_info = QGroupBox("Thông tin hệ thống")
-        group_system_info.setFont(self.bold_font)
-        layout.addWidget(group_system_info, 1) # Cho phép mở rộng
-        system_info_layout = QVBoxLayout(group_system_info)
-        self.text_home_info_qt = QTextEdit()
-        self.text_home_info_qt.setReadOnly(True)
-        self.text_home_info_qt.setFont(self.monospace_font)
-        self.text_home_info_qt.setWordWrapMode(QTextOption.NoWrap) # Tắt word wrap để giữ định dạng
-        system_info_layout.addWidget(self.text_home_info_qt)
-        self._update_display_widget(self.text_home_info_qt, "Đang tải thông tin ban đầu...")
+        user_info_grid_layout.setColumnStretch(1, 1) # Cho cột input của Tên và Tầng mở rộng
+        user_info_grid_layout.setColumnStretch(3, 1) # Cho cột input của Phòng Ban và Chức Vụ mở rộng
+
+        # --- System Info Display (Card Layout) ---
+        # ScrollArea for cards if they overflow
+        cards_scroll_area = QScrollArea()
+        cards_scroll_area.setWidgetResizable(True)
+        cards_scroll_area.setObjectName("CardsScrollArea")
+        
+        cards_container_widget = QWidget() # Widget to hold the grid of cards
+        self.home_cards_layout = QGridLayout(cards_container_widget) # Use QGridLayout for cards
+        self.home_cards_layout.setSpacing(15)
+
+        # Create placeholder cards (will be populated in _on_fetch_pc_info_completed)
+        self.card_general_info = self._create_info_card("Thông tin Chung")
+        self.card_os_info = self._create_info_card("Hệ Điều Hành")
+        self.card_cpu_info = self._create_info_card("CPU")
+        self.card_ram_info = self._create_info_card("RAM")
+        self.card_mainboard_info = self._create_info_card("Mainboard")
+        self.card_disks_info = self._create_info_card("Ổ Đĩa") # For multiple disks
+        self.card_gpus_info = self._create_info_card("Card Đồ Họa (GPU)") # For multiple GPUs
+        self.card_screens_info = self._create_info_card("Màn Hình") # For multiple screens
+
+        self.home_cards_layout.addWidget(self.card_general_info, 0, 0)
+        self.home_cards_layout.addWidget(self.card_os_info, 0, 1)
+        self.home_cards_layout.addWidget(self.card_cpu_info, 1, 0)
+        self.home_cards_layout.addWidget(self.card_ram_info, 1, 1)
+        self.home_cards_layout.addWidget(self.card_mainboard_info, 2, 0)
+        self.home_cards_layout.addWidget(self.card_disks_info, 3, 0, 1, 2) # Span 2 columns for disks
+        self.home_cards_layout.addWidget(self.card_gpus_info, 4, 0, 1, 2)   # Span 2 columns for GPUs
+        self.home_cards_layout.addWidget(self.card_screens_info, 5, 0, 1, 2) # Span 2 columns for Screens
+
+        cards_scroll_area.setWidget(cards_container_widget)
+        layout.addWidget(cards_scroll_area, 1) # Add scroll area to the main tab layout
 
         # --- Button to refresh Home tab info ---
         self.button_refresh_home_qt = QPushButton("Làm mới Dữ liệu PC")
@@ -345,12 +404,42 @@ class PcInfoAppQt(QMainWindow):
         self.button_refresh_home_qt.clicked.connect(self.fetch_pc_info_threaded)
         layout.addWidget(self.button_refresh_home_qt, 0, Qt.AlignCenter)
 
+    def _create_info_card(self, title):
+        card = QGroupBox(title)
+        card.setFont(self.bold_font)
+        card.setObjectName("InfoCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setAlignment(Qt.AlignTop)
+        # Add a QLabel for content, it will be populated later
+        content_label = QLabel("Đang tải...")
+        content_label.setFont(self.monospace_font) # Monospace for consistent alignment
+        content_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard) # Cho phép copy
+        content_label.setWordWrap(True)
+        card_layout.addWidget(content_label)
+        return card
+
     def on_floor_change_qt(self):
         is_custom = self.combo_floor_qt.currentText() == "Khác"
-        self.entry_custom_floor_label_qt.setVisible(is_custom)
-        self.entry_custom_floor_qt.setVisible(is_custom)
+        # Lấy layout của group_user_info để thêm/xóa widget
+        user_info_grid_layout = self.entry_name_qt.parentWidget().layout() # Cách lấy layout của QGroupBox
+
         if not is_custom:
-            self.entry_custom_floor_qt.clear()
+            # Xóa widget nếu chúng đang tồn tại trong layout
+            if self.entry_custom_floor_label_qt.parentWidget() is not None:
+                user_info_grid_layout.removeWidget(self.entry_custom_floor_label_qt)
+                self.entry_custom_floor_label_qt.setParent(None)
+            if self.entry_custom_floor_qt.parentWidget() is not None:
+                user_info_grid_layout.removeWidget(self.entry_custom_floor_qt)
+                self.entry_custom_floor_qt.setParent(None)
+                self.entry_custom_floor_qt.clear()
+        else:
+            # Thêm widget vào layout nếu chưa có
+            if self.entry_custom_floor_label_qt.parentWidget() is None:
+                 user_info_grid_layout.addWidget(self.entry_custom_floor_label_qt, 1, 2) # Dòng 2 (index 1), cột 3 (index 2)
+            if self.entry_custom_floor_qt.parentWidget() is None:
+                 user_info_grid_layout.addWidget(self.entry_custom_floor_qt, 1, 3) # Dòng 2 (index 1), cột 4 (index 3)
+        self.entry_custom_floor_label_qt.setVisible(is_custom) # Vẫn dùng setVisible để đảm bảo trạng thái đúng
+        self.entry_custom_floor_qt.setVisible(is_custom)
 
     def _create_utilities_tab(self, parent_tab_widget):
         tab_main_layout = QVBoxLayout(parent_tab_widget) # Layout chính của tab là QVBoxLayout
@@ -377,40 +466,40 @@ class PcInfoAppQt(QMainWindow):
         group_security = QGroupBox("Bảo mật & Virus")
         group_security.setFont(self.bold_font)
         sec_layout = QVBoxLayout(group_security)
-        self._add_utility_button(sec_layout, "Quét Virus Nhanh", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, run_windows_defender_scan, "utility_defender_quick_scan", needs_wmi=False, task_args=["QuickScan"]))
-        self._add_utility_button(sec_layout, "Quét Virus Toàn Bộ", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, run_windows_defender_scan, "utility_defender_full_scan", needs_wmi=False, task_args=["FullScan"]))
-        self._add_utility_button(sec_layout, "Cập Nhật Định Nghĩa Virus", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, update_windows_defender_definitions, "utility_defender_update", needs_wmi=False))
-        self._add_utility_button(sec_layout, "Kiểm Tra Trạng Thái Tường Lửa", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_firewall_status, "utility_firewall_status", needs_wmi=False))
-        self._add_utility_button(sec_layout, "Bật Tường Lửa (Tất cả Profile)", self.enable_firewall_qt)
-        self._add_utility_button(sec_layout, "Tắt Tường Lửa (Tất cả Profile)", self.disable_firewall_qt)
+        self._add_utility_button(sec_layout, "Quét Virus Nhanh", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_windows_defender_scan, "utility_defender_quick_scan", needs_wmi=False, task_args=["QuickScan"]))
+        self._add_utility_button(sec_layout, "Quét Virus Toàn Bộ", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_windows_defender_scan, "utility_defender_full_scan", needs_wmi=False, task_args=["FullScan"]))
+        self._add_utility_button(sec_layout, "Cập Nhật Định Nghĩa Virus", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, update_windows_defender_definitions, "utility_defender_update", needs_wmi=False))
+        self._add_utility_button(sec_layout, "Kiểm Tra Trạng Thái Tường Lửa", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_firewall_status, "utility_firewall_status", needs_wmi=False))
+        self._add_utility_button(sec_layout, "Bật Tường Lửa (Tất cả Profile)", self.enable_firewall_qt, object_name="WarningButton") # Example of specific style
+        self._add_utility_button(sec_layout, "Tắt Tường Lửa (Tất cả Profile)", self.disable_firewall_qt, object_name="DangerButton")
         self.utilities_actions_layout.addWidget(group_security)
         
         # Group: Thông tin & Chẩn đoán
         group_diag = QGroupBox("Thông tin & Chẩn đoán")
         group_diag.setFont(self.bold_font)
         diag_layout = QVBoxLayout(group_diag)
-        self._add_utility_button(diag_layout, "Xem Dung Lượng Ổ Đĩa", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_disk_partitions_usage, "utility_disk_usage", needs_wmi=True))
-        self._add_utility_button(diag_layout, "Tạo Báo Cáo Pin (Laptop)", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, generate_battery_report, "utility_battery_report", needs_wmi=False))
-        self._add_utility_button(diag_layout, "Kiểm tra kích hoạt Windows", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, check_windows_activation_status, "utility_win_activation", needs_wmi=False))
-        self._add_utility_button(diag_layout, "Xem Event Log Gần Đây (24h)", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_recent_event_logs, "utility_event_logs", needs_wmi=True, wmi_namespace="root\\CIMV2", task_args=[24, 25])) # hours, max_events
-        self._add_utility_button(diag_layout, "Kiểm Tra Phiên Bản Phần Mềm", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_installed_software_versions, "utility_software_versions_wmi", needs_wmi=True)) # Assumes function can use WMI
-        self._add_utility_button(diag_layout, "Ứng Dụng Người Dùng Đã Cài", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_installed_software_versions, "utility_software_versions_reg", needs_wmi=False)) # Assumes function uses winreg
+        self._add_utility_button(diag_layout, "Xem Dung Lượng Ổ Đĩa", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_disk_partitions_usage, "utility_disk_usage", needs_wmi=True, result_type="table"))
+        self._add_utility_button(diag_layout, "Tạo Báo Cáo Pin (Laptop)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, generate_battery_report, "utility_battery_report", needs_wmi=False))
+        self._add_utility_button(diag_layout, "Kiểm tra kích hoạt Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, check_windows_activation_status, "utility_win_activation", needs_wmi=False))
+        self._add_utility_button(diag_layout, "Xem Event Log Gần Đây (24h)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_recent_event_logs, "utility_event_logs", needs_wmi=True, wmi_namespace="root\\CIMV2", task_args=[24, 25], result_type="table"))
+        self._add_utility_button(diag_layout, "Kiểm Tra Phiên Bản Phần Mềm", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_installed_software_versions, "utility_software_versions_wmi", needs_wmi=True, result_type="table"))
+        self._add_utility_button(diag_layout, "Ứng Dụng Người Dùng Đã Cài", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_installed_software_versions, "utility_software_versions_reg", needs_wmi=False, result_type="table"))
         self.utilities_actions_layout.addWidget(group_diag)
         
         # Group: Mạng
         group_network = QGroupBox("Mạng")
         group_network.setFont(self.bold_font)
         net_layout = QVBoxLayout(group_network)
-        self._add_utility_button(net_layout, "Kiểm Tra Kết Nối Wifi", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_wifi_connection_info, "utility_wifi_info", needs_wmi=False))
-        self._add_utility_button(net_layout, "Xem Cấu Hình Mạng Chi Tiết", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_network_configuration_details, "utility_network_config", needs_wmi=True))
-        self._add_utility_button(net_layout, "Ping Google", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, run_ping_test, "utility_ping_google", needs_wmi=False, task_args=["google.com", 4]))
-        self._add_utility_button(net_layout, "Tra Cứu DNS Google", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, lookup_dns_address, "utility_dns_lookup", needs_wmi=False, task_args=["google.com"]))
-        self._add_utility_button(net_layout, "Kết Nối Mạng Đang Hoạt Động", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_active_network_connections, "utility_active_connections", needs_wmi=False))
-        self._add_utility_button(net_layout, "Xóa Cache DNS", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, flush_dns_cache, "utility_flush_dns", needs_wmi=False))
+        self._add_utility_button(net_layout, "Kiểm Tra Kết Nối Wifi", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_wifi_connection_info, "utility_wifi_info", needs_wmi=False))
+        self._add_utility_button(net_layout, "Xem Cấu Hình Mạng Chi Tiết", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_network_configuration_details, "utility_network_config", needs_wmi=True, result_type="table"))
+        self._add_utility_button(net_layout, "Ping Google", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_ping_test, "utility_ping_google", needs_wmi=False, task_args=["google.com", 4]))
+        self._add_utility_button(net_layout, "Tra Cứu DNS Google", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, lookup_dns_address, "utility_dns_lookup", needs_wmi=False, task_args=["google.com"]))
+        self._add_utility_button(net_layout, "Kết Nối Mạng Đang Hoạt Động", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_active_network_connections, "utility_active_connections", needs_wmi=False, result_type="table"))
+        self._add_utility_button(net_layout, "Xóa Cache DNS", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, flush_dns_cache, "utility_flush_dns", needs_wmi=False))
         self.utilities_actions_layout.addWidget(group_network)
         
-        self._add_utility_button(diag_layout, "Kiểm Tra Nhiệt Độ Hệ Thống", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_system_temperatures, "utility_temps", needs_wmi=True, wmi_namespace="root\\WMI"))
-        self._add_utility_button(diag_layout, "Liệt Kê Tiến Trình Đang Chạy", lambda: self._run_task_in_thread_qt(self.text_utilities_results_qt, get_running_processes, "utility_processes", needs_wmi=False))
+        self._add_utility_button(diag_layout, "Kiểm Tra Nhiệt Độ Hệ Thống", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_system_temperatures, "utility_temps", needs_wmi=True, wmi_namespace="root\\WMI", result_type="table"))
+        self._add_utility_button(diag_layout, "Liệt Kê Tiến Trình Đang Chạy", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_running_processes, "utility_processes", needs_wmi=False, result_type="table"))
         
         self.utilities_actions_layout.addStretch(1) # Đẩy các group lên trên
         scroll_area_actions.setWidget(actions_widget_container)
@@ -420,8 +509,12 @@ class PcInfoAppQt(QMainWindow):
         # --- Right Column: Utilities Results Display ---
         results_container_widget = QWidget()
         self.utilities_results_main_layout = QVBoxLayout(results_container_widget) # Lưu layout này
+        self.utilities_results_main_layout.setContentsMargins(0,0,0,0) # Remove margins for tighter fit
 
-        # Results GroupBox and QTextEdit
+        # QStackedWidget for switching between QTextEdit and QTableWidget
+        self.stacked_widget_results_utilities = QStackedWidget()
+        
+        # Page 0: QTextEdit for general results
         results_group = QGroupBox("Kết quả Tiện ích")
         results_group.setFont(self.bold_font)
         results_layout_inner = QVBoxLayout(results_group)
@@ -429,30 +522,45 @@ class PcInfoAppQt(QMainWindow):
         self.text_utilities_results_qt.setReadOnly(True)
         self.text_utilities_results_qt.setFont(self.monospace_font)
         self.text_utilities_results_qt.setWordWrapMode(QTextOption.NoWrap)
+        self.text_utilities_results_qt.setObjectName("UtilitiesResultTextEdit")
         results_layout_inner.addWidget(self.text_utilities_results_qt)
         self._update_display_widget(self.text_utilities_results_qt, "Kết quả của tiện ích sẽ hiển thị ở đây.")
-        self.utilities_results_main_layout.addWidget(results_group, 1) # Cho phép mở rộng
+        self.stacked_widget_results_utilities.addWidget(results_group) # Add QGroupBox containing QTextEdit
+
+        # Page 1: QTableWidget for table results
+        self.table_utilities_results_qt = QTableWidget()
+        self.table_utilities_results_qt.setFont(self.default_font)
+        self.table_utilities_results_qt.setAlternatingRowColors(True)
+        self.table_utilities_results_qt.setSortingEnabled(True)
+        self.table_utilities_results_qt.horizontalHeader().setStretchLastSection(True)
+        self.table_utilities_results_qt.setEditTriggers(QTableWidget.NoEditTriggers) # Read-only
+        self.table_utilities_results_qt.setObjectName("ResultTableWidget")
+        self.stacked_widget_results_utilities.addWidget(self.table_utilities_results_qt)
+
+        self.utilities_results_main_layout.addWidget(self.stacked_widget_results_utilities, 1)
 
         # Buttons dưới ô kết quả
         utils_buttons_frame = QFrame()
         utils_buttons_layout_inner = QHBoxLayout(utils_buttons_frame) # Layout nội bộ cho các nút
         utils_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
         self.button_save_utility_result_qt = QPushButton("Lưu Kết Quả")
-        self.button_save_utility_result_qt.setCursor(Qt.PointingHandCursor)
-        self.button_save_utility_result_qt.setFont(self.default_font)
-        self.button_save_utility_result_qt.setEnabled(False)
-        self.button_save_utility_result_qt.clicked.connect(lambda: self.save_tab_result_qt(self.text_utilities_results_qt.toPlainText(), "KetQua_TienIch"))
+        self._style_save_button(self.button_save_utility_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_utilities, "KetQua_TienIch"))
         utils_buttons_layout_inner.addWidget(self.button_save_utility_result_qt)
         self.utilities_results_main_layout.addWidget(utils_buttons_frame)
 
         content_layout.addWidget(results_container_widget, 2) # Tỷ lệ 2 cho cột phải
 
-    def _add_utility_button(self, layout, text, on_click_action):
+    def _add_utility_button(self, layout, text, on_click_action, object_name=None):
         button = QPushButton(text)
+        if object_name:
+            button.setObjectName(object_name) # Use provided object_name for specific styling
+        else:
+            button.setObjectName("UtilityButton") # Default object_name for general utility button styling
         button.setFont(self.default_font)
         button.setCursor(Qt.PointingHandCursor)
-        button.clicked.connect(on_click_action)
+        button.clicked.connect(lambda checked=False, btn=button: on_click_action(btn)) # Pass button to action
         layout.addWidget(button)
+        return button
 
     def _create_fixes_tab(self, parent_tab_widget):
         tab_main_layout_fixes = QVBoxLayout(parent_tab_widget)
@@ -460,7 +568,6 @@ class PcInfoAppQt(QMainWindow):
         # --- Content Layout (Actions and Results side-by-side) ---
         content_layout_fixes = QHBoxLayout()
         tab_main_layout_fixes.addLayout(content_layout_fixes)
-
 
         # --- Left Column: Search Bar and Action Buttons ---
         left_column_widget_fixes = QWidget()
@@ -474,41 +581,39 @@ class PcInfoAppQt(QMainWindow):
         self.fixes_actions_layout.setSpacing(10) # Tăng khoảng cách giữa các GroupBox
         self.fixes_actions_layout.setAlignment(Qt.AlignTop)
 
-        # Group: Dọn dẹp & Tối ưu
-        group_cleanup = QGroupBox("Dọn dẹp & Tối ưu")
-        group_cleanup.setFont(self.bold_font)
-        cleanup_layout = QVBoxLayout(group_cleanup)
-        self._add_utility_button(cleanup_layout, "Xóa File Tạm & Dọn Dẹp", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, clear_temporary_files, "fix_clear_temp", needs_wmi=False))
-        self._add_utility_button(cleanup_layout, "Mở Resource Monitor", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, open_resource_monitor, "fix_resmon", needs_wmi=False))
-        self.fixes_actions_layout.addWidget(group_cleanup)
+        # Group 1: Tối ưu & Dọn dẹp Hệ thống
+        group_optimize_cleanup = QGroupBox("Tối ưu & Dọn dẹp Hệ thống")
+        group_optimize_cleanup.setFont(self.bold_font)
+        optimize_cleanup_layout = QVBoxLayout(group_optimize_cleanup)
+        self._add_utility_button(optimize_cleanup_layout, "Xóa File Tạm & Dọn Dẹp", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, clear_temporary_files, "fix_clear_temp", needs_wmi=False))
+        self._add_utility_button(optimize_cleanup_layout, "Mở Resource Monitor", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, open_resource_monitor, "fix_resmon", needs_wmi=False))
+        self._add_utility_button(optimize_cleanup_layout, "Quản Lý Khởi Động Cùng Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, get_startup_programs, "fix_startup_programs", needs_wmi=True, result_type="table"))
+        self.fixes_actions_layout.addWidget(group_optimize_cleanup)
 
-        # Group: Sửa lỗi Hệ thống
-        group_sys_fix = QGroupBox("Sửa lỗi Hệ thống")
-        group_sys_fix.setFont(self.bold_font)
-        sys_fix_layout = QVBoxLayout(group_sys_fix)
-        self._add_utility_button(sys_fix_layout, "Reset Kết Nối Internet", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, reset_internet_connection, "fix_reset_net", needs_wmi=False))
-        self._add_utility_button(sys_fix_layout, "Chạy SFC Scan", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, run_sfc_scan, "fix_sfc_scan", needs_wmi=False))
-        self._add_utility_button(sys_fix_layout, "Tạo Điểm Khôi Phục Hệ Thống", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, create_system_restore_point, "fix_create_restore_point", needs_wmi=False))
-        self.fixes_actions_layout.addWidget(group_sys_fix)
-
-        # Group: Cập nhật & Khởi động
-        group_updates = QGroupBox("Cập nhật & Khởi động")
-        group_updates.setFont(self.bold_font)
-        updates_layout = QVBoxLayout(group_updates)
-        self._add_utility_button(updates_layout, "Quản Lý Khởi Động Cùng Windows", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, get_startup_programs, "fix_startup_programs", needs_wmi=True))
-        self._add_utility_button(updates_layout, "Cập Nhật Phần Mềm (Winget)", lambda: self._run_task_in_thread_qt(self.text_fixes_results_qt, update_all_winget_packages, "fix_winget_update", needs_wmi=False))
-        self.fixes_actions_layout.addWidget(group_updates)
+        # Group 2: Sửa lỗi & Cập nhật Hệ thống
+        group_fix_update = QGroupBox("Sửa lỗi & Cập nhật Hệ thống")
+        group_fix_update.setFont(self.bold_font)
+        fix_update_layout = QVBoxLayout(group_fix_update)
+        self._add_utility_button(fix_update_layout, "Reset Kết Nối Internet", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, reset_internet_connection, "fix_reset_net", needs_wmi=False))
+        self._add_utility_button(fix_update_layout, "Chạy SFC Scan", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, run_sfc_scan, "fix_sfc_scan", needs_wmi=False))
+        self._add_utility_button(fix_update_layout, "Tạo Điểm Khôi Phục Hệ Thống", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, create_system_restore_point, "fix_create_restore_point", needs_wmi=False))
+        self._add_utility_button(fix_update_layout, "Cập Nhật Phần Mềm (Winget)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, update_all_winget_packages, "fix_winget_update", needs_wmi=False))
+        self.fixes_actions_layout.addWidget(group_fix_update)
 
         self.fixes_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(actions_widget_container)
         left_column_layout_fixes.addWidget(scroll_area_actions) # Add scroll area below search bar
         content_layout_fixes.addWidget(left_column_widget_fixes, 1) # Tỷ lệ 1 cho cột trái
 
+
         # Right Column: Fixes Results Display
         results_container_widget = QWidget()
         self.fixes_results_main_layout = QVBoxLayout(results_container_widget) # Lưu layout này
-        # Results GroupBox and QTextEdit
+        self.fixes_results_main_layout.setContentsMargins(0,0,0,0)
 
+        self.stacked_widget_results_fixes = QStackedWidget()
+
+        # Page 0 for Fixes Tab: QTextEdit
         results_group = QGroupBox("Kết quả Tác vụ Sửa lỗi")
         results_group.setFont(self.bold_font)
         results_layout_inner = QVBoxLayout(results_group)
@@ -516,19 +621,29 @@ class PcInfoAppQt(QMainWindow):
         self.text_fixes_results_qt.setReadOnly(True)
         self.text_fixes_results_qt.setFont(self.monospace_font)
         self.text_fixes_results_qt.setWordWrapMode(QTextOption.NoWrap)
+        self.text_fixes_results_qt.setObjectName("FixesResultTextEdit")
         results_layout_inner.addWidget(self.text_fixes_results_qt)
-        self._update_display_widget(self.text_fixes_results_qt, "Chọn một tác vụ để thực hiện.")
-        self.fixes_results_main_layout.addWidget(results_group, 1)
+        self._update_display_widget(self.text_fixes_results_qt, html.escape("Chọn một tác vụ để thực hiện."))
+        self.stacked_widget_results_fixes.addWidget(results_group)
+
+        # Page 1 for Fixes Tab: QTableWidget
+        self.table_fixes_results_qt = QTableWidget()
+        self.table_fixes_results_qt.setFont(self.default_font)
+        self.table_fixes_results_qt.setAlternatingRowColors(True)
+        self.table_fixes_results_qt.setSortingEnabled(True)
+        self.table_fixes_results_qt.horizontalHeader().setStretchLastSection(True)
+        self.table_fixes_results_qt.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table_fixes_results_qt.setObjectName("ResultTableWidget")
+        self.stacked_widget_results_fixes.addWidget(self.table_fixes_results_qt)
+
+        self.fixes_results_main_layout.addWidget(self.stacked_widget_results_fixes, 1)
         
         # Frame cho nút lưu kết quả ở tab Fixes
         fixes_buttons_frame = QFrame()
         fixes_buttons_layout_inner = QHBoxLayout(fixes_buttons_frame) # Layout nội bộ cho các nút
         fixes_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
         self.button_save_fix_result_qt = QPushButton("Lưu Kết Quả Sửa Lỗi")
-        self.button_save_fix_result_qt.setCursor(Qt.PointingHandCursor)
-        self.button_save_fix_result_qt.setFont(self.default_font)
-        self.button_save_fix_result_qt.setEnabled(False)
-        self.button_save_fix_result_qt.clicked.connect(lambda: self.save_tab_result_qt(self.text_fixes_results_qt.toPlainText(), "KetQua_SuaLoi"))
+        self._style_save_button(self.button_save_fix_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_fixes, "KetQua_SuaLoi"))
         fixes_buttons_layout_inner.addWidget(self.button_save_fix_result_qt)
         self.fixes_results_main_layout.addWidget(fixes_buttons_frame)
 
@@ -544,16 +659,13 @@ class PcInfoAppQt(QMainWindow):
         if current_widget == self.tab_utilities:
             if hasattr(self, 'utilities_actions_layout'):
                 self._filter_action_buttons(search_term, self.utilities_actions_layout)
-            if hasattr(self, 'text_utilities_results_qt'):
-                self._perform_text_search(self.text_utilities_results_qt, search_term)
+            if hasattr(self, 'stacked_widget_results_utilities') and self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit):
+                self._perform_text_search(self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit), search_term)
         elif current_widget == self.tab_fixes:
             if hasattr(self, 'fixes_actions_layout'):
                 self._filter_action_buttons(search_term, self.fixes_actions_layout)
-            if hasattr(self, 'text_fixes_results_qt'):
-                self._perform_text_search(self.text_fixes_results_qt, search_term)
-        elif current_widget == self.tab_home: # Ví dụ: tìm kiếm trong tab Trang chủ
-             if hasattr(self, 'text_home_info_qt'):
-                 self._perform_text_search(self.text_home_info_qt, search_term)
+            if hasattr(self, 'stacked_widget_results_fixes') and self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit):
+                self._perform_text_search(self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit), search_term)
         # Thêm các tab khác nếu cần tìm kiếm
 
 
@@ -573,6 +685,7 @@ class PcInfoAppQt(QMainWindow):
         title_label = QLabel("Công Cụ Hỗ Trợ PC")
         title_font = QFont(DEFAULT_FONT_FAMILY, 18, QFont.Bold)
         title_label.setFont(title_font)
+        title_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
         title_label.setAlignment(Qt.AlignCenter)
         scroll_layout.addWidget(title_label)
 
@@ -601,6 +714,7 @@ class PcInfoAppQt(QMainWindow):
         content_label = QLabel()
         content_label.setFont(self.default_font)
         content_label.setWordWrap(True)
+        content_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard) # Cho phép copy
         if is_html:
             # Xử lý markdown đơn giản (**bold**) thành HTML
             html_content = html.escape(content_text).replace("**", "<b>").replace("</b>", "</b>", 1) # Chỉ replace cặp đầu tiên
@@ -647,12 +761,12 @@ class PcInfoAppQt(QMainWindow):
                 /* font-weight: bold; -- Will be set by self.bold_font in Python for specific QGroupBox titles */
             }}
             QLabel {{
-                /* Inherits font and color from QWidget global style */
                 padding: 3px;
                 background-color: transparent; /* Ensure labels don't have own background unless intended */
             }}
             QPushButton {{
-                background-color: {BUTTON_BG_NORMAL};
+                /* Default button style - will be overridden by specific objectNames or classes */
+                background-color: {BUTTON_SECONDARY_BG};
                 color: {TEXT_COLOR_PRIMARY};
                 border: 1px solid {BORDER_COLOR_DARK};
                 border-radius: 6px; /* Increased border radius */
@@ -661,11 +775,11 @@ class PcInfoAppQt(QMainWindow):
                 /* font-family and font-size are inherited from QWidget or set by self.default_font */
             }}
             QPushButton:hover {{
-                background-color: {BUTTON_BG_HOVER};
+                background-color: {BUTTON_SECONDARY_HOVER};
                 border-color: {ACCENT_COLOR_HOVER}; /* Highlight border on hover */
             }}
             QPushButton:pressed {{
-                background-color: {BUTTON_BG_PRESSED};
+                background-color: {BUTTON_SECONDARY_PRESSED};
             }}
             QPushButton:disabled {{
                 background-color: #E0E0E0; /* Lighter grey for disabled */
@@ -760,12 +874,29 @@ class PcInfoAppQt(QMainWindow):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
-            /* Styles for result display QTextEdit widgets */
+            /* Styles for result display QTextEdit and QTableWidget widgets */
             QTextEdit#ResultTextEdit, QTextEdit#UtilitiesResultTextEdit, QTextEdit#FixesResultTextEdit {{
                  font-family: "{MONOSPACE_FONT_FAMILY}";
                  font-size: {MONOSPACE_FONT_SIZE}pt;
                  background-color: #FAFAFA; /* Slightly different background for readability */
                  border: 1px solid {BORDER_COLOR_LIGHT};
+            }}
+            QTableWidget#ResultTableWidget {{
+                font-family: "{DEFAULT_FONT_FAMILY}";
+                font-size: {DEFAULT_FONT_SIZE-1}pt; /* Slightly smaller for table data */
+                alternate-background-color: #F5F5F5; /* Light grey for alternate rows */
+                gridline-color: {BORDER_COLOR_LIGHT};
+                border: 1px solid {BORDER_COLOR_LIGHT};
+            }}
+            QTableWidget#ResultTableWidget::item:hover {{
+                background-color: {ACCENT_COLOR_HOVER};
+                color: white;
+            }}
+            QHeaderView::section {{
+                background-color: {BUTTON_SECONDARY_BG};
+                padding: 4px;
+                border: 1px solid {BORDER_COLOR_LIGHT};
+                font-weight: bold;
             }}
         """)
 
@@ -777,7 +908,7 @@ class PcInfoAppQt(QMainWindow):
                 border: none;
             }}
             QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
-            QPushButton:pressed {{ background-color: {BUTTON_EXPORT_BG}; }}
+            QPushButton:pressed {{ background-color: {BUTTON_EXPORT_PRESSED}; }}
         """)
         self.button_exit.setStyleSheet(f"""
             QPushButton {{
@@ -788,16 +919,27 @@ class PcInfoAppQt(QMainWindow):
             QPushButton:hover {{ background-color: {BUTTON_DANGER_HOVER}; }}
             QPushButton:pressed {{ background-color: {BUTTON_DANGER_BG}; }}
         """)
+        self.button_export_csv.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BUTTON_EXPORT_BG};
+                color: white;
+                border: none;
+            }}
+            QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
+            QPushButton:pressed {{ background-color: {BUTTON_EXPORT_PRESSED}; }}
+        """)
+
         # Style for "Refresh" button on Home tab
         if hasattr(self, 'button_refresh_home_qt'):
             self.button_refresh_home_qt.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {ACCENT_COLOR};
+                    background-color: {BUTTON_PRIMARY_BG};
                     color: white;
                     border: none;
+                    font-weight: bold;
                 }}
-                QPushButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
-                QPushButton:pressed {{ background-color: {ACCENT_COLOR_PRESSED}; }}
+                QPushButton:hover {{ background-color: {BUTTON_PRIMARY_HOVER}; }}
+                QPushButton:pressed {{ background-color: {BUTTON_PRIMARY_PRESSED}; }}
             """)
         # Style for "Save Result" buttons
         common_save_button_style = f"""
@@ -818,30 +960,42 @@ class PcInfoAppQt(QMainWindow):
             self.button_save_utility_result_qt.setStyleSheet(common_save_button_style)
         if hasattr(self, 'button_save_fix_result_qt'):
             self.button_save_fix_result_qt.setStyleSheet(common_save_button_style)
+        
+        # Style for InfoCards on Home tab
+        self.setStyleSheet(self.styleSheet() + f"""
+            QGroupBox#InfoCard {{
+                border: 1px solid {BORDER_COLOR_DARK}; /* Darker border for cards */
+            }}""")
 
     def _update_display_widget(self, text_widget, content, is_error=False):
+        # content is now assumed to be an HTML string, or plain text that needs escaping by the caller.
+        # For plain text messages passed directly (e.g. "Đang tải..."), they should be escaped by the caller.
+        # For content generated by _format_task_result_for_display_generic or _populate_card, it's already HTML.
         text_widget.clear()
-        
-        processed_lines = []
-        for line in content.splitlines():
-            stripped_line = line.strip()
-            # Chỉ in đậm nếu dòng BẮT ĐẦU và KẾT THÚC bằng ** (và có nội dung ở giữa)
-            if stripped_line.startswith("**") and stripped_line.endswith("**") and len(stripped_line) > 4:
-                # Lấy phần nội dung giữa dấu ** để escape riêng
-                inner_content = stripped_line[2:-2]
-                # Giữ nguyên phần thụt lề gốc (nếu có) bằng cách lấy khoảng trắng ở đầu line gốc
-                leading_spaces = line[:len(line) - len(line.lstrip())]
-                processed_lines.append(f"{leading_spaces}<b>{html.escape(inner_content)}</b>")
-            else:
-                # Nếu không, escape toàn bộ dòng
-                processed_lines.append(html.escape(line))
 
-        final_html_content = "<br>".join(processed_lines)
+        final_html_content = content # Assume content is already HTML or properly escaped plain text formatted as HTML
 
-        if is_error or "Lỗi" in content or "Error" in content or "Không thể" in content:
-            text_widget.setHtml(f"<font color='{ERROR_TEXT_COLOR_HTML}'><pre style='color:{ERROR_TEXT_COLOR_HTML};'>{final_html_content}</pre></font>")
+        # Determine text color based on is_error flag or keywords in the content.
+        # The keyword check should be cautious if 'Lỗi' can be part of a non-error label.
+        # The is_error flag is the most reliable way to indicate an error.
+        text_color_to_use = DEFAULT_TEXT_COLOR_HTML
+        if is_error:
+            text_color_to_use = ERROR_TEXT_COLOR_HTML
+        elif isinstance(content, str) and any(err_keyword in content for err_keyword in ["Lỗi", "Error", "Không thể"]):
+             # Check if it's not part of a bold tag like "<b>Lỗi:</b>"
+            if not any(f"<b>{err_keyword}</b>" in content for err_keyword in ["Lỗi", "Error", "Không thể"]):
+                text_color_to_use = ERROR_TEXT_COLOR_HTML
+
+        if isinstance(text_widget, QLabel):
+            text_widget.setTextFormat(Qt.RichText)
+            colored_html_content = f"<font color='{text_color_to_use}'>{final_html_content}</font>"
+            text_widget.setText(colored_html_content)
+        elif isinstance(text_widget, QTextEdit):
+            text_widget.setHtml(f"<font color='{text_color_to_use}'><pre style='color:{text_color_to_use}; white-space: pre-wrap; word-wrap: break-word;'>{final_html_content}</pre></font>")
         else:
-            text_widget.setHtml(f"<font color='{DEFAULT_TEXT_COLOR_HTML}'><pre style='color:{DEFAULT_TEXT_COLOR_HTML};'>{final_html_content}</pre></font>")
+            logging.warning(f"Unsupported widget type for _update_display_widget: {type(text_widget)}")
+            try: text_widget.setText(content) # Try plain text as a fallback
+            except AttributeError: pass
 
     def _clear_text_highlights(self, text_edit_widget):
         """Clears background highlights from a QTextEdit."""
@@ -909,38 +1063,86 @@ class PcInfoAppQt(QMainWindow):
                         enable_save_utility=False, enable_save_fix=False):
         self.button_refresh_home_qt.setEnabled(enable_refresh_home)
         self.button_export_home.setEnabled(enable_export_home and self.pc_info_dict is not None)
-        self.button_save_utility_result_qt.setEnabled(enable_save_utility)
-        self.button_save_fix_result_qt.setEnabled(enable_save_fix)
+        if hasattr(self, 'button_save_utility_result_qt'):
+            self.button_save_utility_result_qt.setEnabled(enable_save_utility)
+        if hasattr(self, 'button_save_fix_result_qt'):
+            self.button_save_fix_result_qt.setEnabled(enable_save_fix)
 
     def fetch_pc_info_threaded(self):
-        self._update_display_widget(self.text_home_info_qt, "Đang lấy thông tin, vui lòng chờ...")
+        # Update placeholder text in cards
+        card_widgets = [
+            self.card_general_info, self.card_os_info, self.card_cpu_info,
+            self.card_ram_info, self.card_mainboard_info, self.card_disks_info,
+            self.card_gpus_info, self.card_screens_info
+        ]
+        for card in card_widgets:
+            content_label = card.findChild(QLabel)
+            if content_label:
+                self._update_display_widget(content_label, html.escape("Đang tải..."))
+
         self._toggle_buttons_qt(enable_refresh_home=False, enable_export_home=False)
 
-        # Clear highlights from the home text edit if the search input was removed
-        if hasattr(self, 'text_home_info_qt') and not hasattr(self, 'search_home_results_input'):
-            self._clear_text_highlights(self.text_home_info_qt)
-        elif hasattr(self, 'search_home_results_input'): # Should not be true if search bar is removed
-            self.search_home_results_input.clear()
-
-        thread = WorkerThread(get_detailed_system_information, "fetch_pc_info", needs_wmi=False) # function handles its own WMI
+        # Pass the refresh button to the thread
+        thread = WorkerThread(get_detailed_system_information, "fetch_pc_info", needs_wmi=False,
+                                button_to_manage=self.button_refresh_home_qt,
+                                original_button_text=self.button_refresh_home_qt.text())
         thread.task_completed.connect(self._on_fetch_pc_info_completed)
         thread.task_error.connect(self._on_task_error)
         self.threads.append(thread)
         thread.start()
 
+    def _populate_card(self, card_groupbox, data_dict, keys_map):
+        content_label = card_groupbox.findChild(QLabel)
+        if not content_label: return
+
+        lines = []
+        if isinstance(data_dict, dict):
+            for data_key, display_name in keys_map:
+                value = data_dict.get(data_key, NOT_AVAILABLE)
+                lines.append(f"<b>{display_name}:</b> {html.escape(str(value))}")
+        elif isinstance(data_dict, list): # For lists of dicts (e.g., disks, gpus)
+            for i, item_dict in enumerate(data_dict):
+                if isinstance(item_dict, dict):
+                    if "Lỗi" in item_dict:
+                        lines.append(f"<i>{card_groupbox.title()} {i+1}: {item_dict['Lỗi']}</i>")
+                        continue
+                    lines.append(f"<b>{card_groupbox.title()} {i+1}:</b>")
+                    for data_key, display_name in keys_map: # keys_map should be for items in the list
+                        value = item_dict.get(data_key, NOT_AVAILABLE)
+                        lines.append(f"  <b>{display_name}:</b> {html.escape(str(value))}")
+                    lines.append("") # Spacer
+        else: # Single value or error string
+            lines.append(html.escape(str(data_dict)))
+            
+        self._update_display_widget(content_label, "<br>".join(lines) if lines else "Không có thông tin.")
+
     def _on_fetch_pc_info_completed(self, task_name, data):
         if task_name == "fetch_pc_info":
             self.pc_info_dict = data
-            home_info_data = self.pc_info_dict.get("SystemInformation", {"PC": {"Lỗi": "Không có dữ liệu SystemInformation"}})
-            self.formatted_pc_info_string_home = format_system_details_to_string(home_info_data) # Chỉ format phần system details
+            sys_info = self.pc_info_dict.get("SystemInformation", {})
+            pc_data = sys_info.get("PC", {})
+            screen_data = sys_info.get("Màn hình", [])
 
+            self._populate_card(self.card_general_info, pc_data, [("Tên máy tính", "Tên PC"), ("Loại máy", "Loại Máy"), ("Địa chỉ IP", "IP"), ("Địa chỉ MAC", "MAC")])
+            self._populate_card(self.card_os_info, pc_data, [("Hệ điều hành", "HĐH"), ("Phiên bản Windows", "Phiên Bản")])
+            self._populate_card(self.card_cpu_info, pc_data.get("CPU", {}), [("Kiểu máy", "Model"), ("Số lõi", "Lõi"), ("Số luồng", "Luồng")])
+            self._populate_card(self.card_ram_info, {"Tổng RAM": pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE)}, [("Tổng RAM", "Tổng RAM")])
+            self._populate_card(self.card_mainboard_info, pc_data.get("Mainboard", {}), [("Nhà sản xuất", "NSX"), ("Kiểu máy", "Model"), ("Số Sê-ri", "Serial")])
+            
+            # For lists like disks, gpus, screens
+            disk_keys_map = [("Kiểu máy", "Model"), ("Dung lượng (GB)", "Size"), ("Giao tiếp", "Interface"), ("Loại phương tiện", "Type")]
+            self._populate_card(self.card_disks_info, pc_data.get("Ổ đĩa", []), disk_keys_map)
+            gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Res")]
+            self._populate_card(self.card_gpus_info, pc_data.get("Card đồ họa (GPU)", []), gpu_keys_map)
+            screen_keys_map = [("Tên", "Tên"), ("Độ phân giải", "Res"), ("Trạng thái", "Status")]
+            self._populate_card(self.card_screens_info, screen_data, screen_keys_map)
+            
             # Update greeting label with user name
-            user_name = home_info_data.get("PC", {}).get("User Name", NOT_AVAILABLE)
+            user_name = pc_data.get("User Name", NOT_AVAILABLE) # Corrected: use pc_data
+            if user_name == NOT_AVAILABLE and "Tên máy tính" in pc_data: # Fallback for greeting
+                user_name = pc_data.get("Tên máy tính", "Người dùng")
             self.greeting_label.setText(f"Chào bạn, {user_name}!")
-
-            self._update_display_widget(self.text_home_info_qt, self.formatted_pc_info_string_home)
             self._toggle_buttons_qt(enable_refresh_home=True, enable_export_home=True)
-
     def _on_task_error(self, task_name, error_message):
         logging.error(f"Error in task '{task_name}': {error_message}")
         is_fetch_pc_info = task_name == "fetch_pc_info"
@@ -949,17 +1151,28 @@ class PcInfoAppQt(QMainWindow):
 
         if is_fetch_pc_info:
             self.pc_info_dict = None
-            self.formatted_pc_info_string_home = f"Lỗi khi lấy thông tin:\n{error_message}"
-            self._update_display_widget(self.text_home_info_qt, self.formatted_pc_info_string_home, is_error=True)
+            error_text_for_cards = f"Lỗi: {error_message}"
+            card_widgets = [self.card_general_info, self.card_os_info, self.card_cpu_info, self.card_ram_info, self.card_mainboard_info, self.card_disks_info, self.card_gpus_info, self.card_screens_info]
+            for card in card_widgets:
+                content_label = card.findChild(QLabel)
+                if content_label:
+                    self._update_display_widget(content_label, html.escape(error_text_for_cards).replace("\n", "<br>"), is_error=True)
             self._toggle_buttons_qt(enable_refresh_home=True, enable_export_home=False)
         elif is_utility_task:
-            self._update_display_widget(self.text_utilities_results_qt, f"Lỗi khi thực hiện tác vụ:\n{error_message}", is_error=True)
+            # Determine if the error should go to QTextEdit or QTableWidget (or just show in QTextEdit)
+            self.stacked_widget_results_utilities.setCurrentIndex(0) # Show QTextEdit for errors
+            text_edit_target = self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit)
+            self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
             self._toggle_buttons_qt(enable_save_utility=True) # Vẫn cho phép lưu lỗi nếu muốn
         elif is_fix_task:
-            self._update_display_widget(self.text_fixes_results_qt, f"Lỗi khi thực hiện tác vụ:\n{error_message}", is_error=True)
+            self.stacked_widget_results_fixes.setCurrentIndex(0)
+            text_edit_target = self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit)
+            self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
             self._toggle_buttons_qt(enable_save_fix=True)
-
-        QMessageBox.warning(self, "Lỗi Tác Vụ", f"Lỗi khi thực hiện '{task_name}':\n{error_message}")
+    def toggle_notes_visibility(self, checked):
+        """Hiện hoặc ẩn ô Ghi chú dựa vào trạng thái checkbox."""
+        self.label_notes_qt.setVisible(checked)
+        self.text_notes_qt.setVisible(checked)
 
     def on_export_info_qt(self):
         if not self.pc_info_dict:
@@ -1001,8 +1214,23 @@ class PcInfoAppQt(QMainWindow):
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi xuất file: {e}")
             logging.exception("Lỗi không xác định khi xuất file:")
 
-    def save_tab_result_qt(self, content_to_save, default_prefix="KetQua"):
-        if not content_to_save or content_to_save == "Kết quả của tiện ích sẽ hiển thị ở đây." or content_to_save == "Chọn một tác vụ để thực hiện." or "Đang thực hiện:" in content_to_save:
+    def save_tab_result_qt(self, stacked_widget_results, default_prefix="KetQua"):
+        current_widget = stacked_widget_results.currentWidget()
+        content_to_save = ""
+
+        if isinstance(current_widget, QGroupBox): # It's the QTextEdit page
+            text_edit = current_widget.findChild(QTextEdit)
+            if text_edit:
+                content_to_save = text_edit.toPlainText().strip()
+        elif isinstance(current_widget, QTableWidget): # It's the QTableWidget page
+            # For now, let user know CSV export is separate or implement simple text dump
+            # QMessageBox.information(self, "Lưu Kết Quả Bảng", "Để lưu dữ liệu bảng, vui lòng sử dụng nút 'Xuất CSV (Bảng)'.")
+            # return
+            # Or, create a simple text representation of the table:
+            table_widget = current_widget
+            content_to_save = self._get_table_content_as_text(table_widget)
+
+        if not content_to_save or "Đang thực hiện:" in content_to_save or "Kết quả của tiện ích sẽ hiển thị ở đây." in content_to_save or "Chọn một tác vụ để thực hiện." in content_to_save :
             QMessageBox.warning(self, "Không có kết quả", "Không có kết quả để lưu hoặc tác vụ đang chạy.")
             return
         try:
@@ -1022,12 +1250,59 @@ class PcInfoAppQt(QMainWindow):
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi lưu kết quả: {e}")
             logging.exception("Lỗi không xác định khi lưu kết quả tab:")
 
-    def _run_task_in_thread_qt(self, target_widget, task_function, task_name_prefix, needs_wmi=False, wmi_namespace="root\\CIMV2", task_args=None):
+    def _get_table_content_as_text(self, table_widget):
+        if not table_widget: return ""
+        header = [table_widget.horizontalHeaderItem(c).text() for c in range(table_widget.columnCount())]
+        lines = [",".join(header)]
+        for r in range(table_widget.rowCount()):
+            row_data = []
+            for c in range(table_widget.columnCount()):
+                item = table_widget.item(r, c)
+                row_data.append(item.text() if item else "")
+            lines.append(",".join(row_data))
+        return "\n".join(lines)
+
+    def on_export_csv_qt(self):
+        current_tab_widget = self.notebook.currentWidget()
+        table_to_export = None
+        if current_tab_widget == self.tab_utilities and self.stacked_widget_results_utilities.currentIndex() == 1:
+            table_to_export = self.table_utilities_results_qt
+        elif current_tab_widget == self.tab_fixes and self.stacked_widget_results_fixes.currentIndex() == 1:
+            table_to_export = self.table_fixes_results_qt
+
+        if not table_to_export or table_to_export.rowCount() == 0:
+            QMessageBox.warning(self, "Không có dữ liệu", "Không có dữ liệu bảng để xuất CSV.")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_suggestion = f"TableData_{timestamp}.csv"
+        save_dir_default = os.path.join(os.path.expanduser("~"), "Documents", "PC_Info_Tool_Exports")
+        os.makedirs(save_dir_default, exist_ok=True)
+        file_path, _ = QFileDialog.getSaveFileName(self, "Xuất Bảng ra CSV", os.path.join(save_dir_default, filename_suggestion), "CSV Files (*.csv);;All Files (*)")
+
+        if file_path:
+            try:
+                with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile: # utf-8-sig for Excel compatibility
+                    writer = csv.writer(csvfile)
+                    header = [table_to_export.horizontalHeaderItem(c).text() for c in range(table_to_export.columnCount())]
+                    writer.writerow(header)
+                    for r in range(table_to_export.rowCount()):
+                        row_data = [table_to_export.item(r, c).text() if table_to_export.item(r, c) else "" for c in range(table_to_export.columnCount())]
+                        writer.writerow(row_data)
+                QMessageBox.information(self, "Xuất CSV Thành Công", f"Dữ liệu bảng đã được xuất ra:\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Lỗi Xuất CSV", f"Không thể xuất CSV: {e}")
+                logging.exception("Lỗi khi xuất CSV:")
+
+    def _run_task_in_thread_qt(self, button_clicked, target_stacked_widget, task_function, task_name_prefix, needs_wmi=False, wmi_namespace="root\\CIMV2", task_args=None, result_type="text"):
         task_name = f"{task_name_prefix}_{task_function.__name__}_{datetime.now().strftime('%H%M%S%f')}" # Unique task name
-        self._update_display_widget(target_widget, f"Đang thực hiện: {task_function.__name__}...")
         
-        is_utility_task = target_widget == self.text_utilities_results_qt
-        is_fix_task = target_widget == self.text_fixes_results_qt
+        # Determine which QTextEdit to update for "Đang thực hiện..."
+        # This assumes the QTextEdit is always at index 0 of the QGroupBox in the QStackedWidget's page 0
+        text_display_for_loading = target_stacked_widget.widget(0).findChild(QTextEdit)
+        if text_display_for_loading:
+            self._update_display_widget(text_display_for_loading, html.escape(f"Đang thực hiện: {task_function.__name__}..."))
+        target_stacked_widget.setCurrentIndex(0) # Show text display during loading
 
         # Clear previous search in the target_widget before running a new task
         # Clear the global search bar
@@ -1035,10 +1310,14 @@ class PcInfoAppQt(QMainWindow):
             self.global_search_input.clear() # Clearing will trigger empty search/filter via _perform_global_search
 
         # Explicitly clear highlights as clearing the search bar might not be enough if it was already empty
-        self._clear_text_highlights(target_widget) # Clear highlights as well
+        if text_display_for_loading:
+            self._clear_text_highlights(text_display_for_loading)
 
-        if is_utility_task: self._toggle_buttons_qt(enable_save_utility=False)
-        elif is_fix_task: self._toggle_buttons_qt(enable_save_fix=False)
+        is_utility_task = target_stacked_widget == self.stacked_widget_results_utilities
+        is_fix_task = target_stacked_widget == self.stacked_widget_results_fixes
+
+        if is_utility_task: self._toggle_buttons_qt(enable_save_utility=False); self.button_export_csv.setVisible(False)
+        elif is_fix_task: self._toggle_buttons_qt(enable_save_fix=False); self.button_export_csv.setVisible(False)
 
         # Đảm bảo task_args là một tuple để unpack an toàn
         if task_args is None:
@@ -1048,29 +1327,68 @@ class PcInfoAppQt(QMainWindow):
         else: # Nếu task_args là một giá trị đơn lẻ, coi nó là một tuple một phần tử
             actual_args_for_thread_tuple = (task_args,)
             
-        thread = WorkerThread(task_function, task_name, needs_wmi, wmi_namespace, *actual_args_for_thread_tuple)
-        thread.task_completed.connect(lambda name, data: self._on_generic_task_completed(name, data, target_widget))
+        thread = WorkerThread(task_function, task_name, needs_wmi, wmi_namespace,
+                                *actual_args_for_thread_tuple,
+                                button_to_manage=button_clicked,
+                                original_button_text=button_clicked.text())
+        thread.task_completed.connect(lambda name, data: self._on_generic_task_completed(name, data, target_stacked_widget, result_type))
         thread.task_error.connect(self._on_task_error)
         self.threads.append(thread)
         thread.start()
 
-    def _on_generic_task_completed(self, task_name, data, target_widget):
-        # Sử dụng lại hàm format_task_result_for_display từ Tkinter version (nó trả về string)
-        # Lấy lại hàm _format_task_result_for_display từ file pc_info_gui.py (Tkinter)
-        # và điều chỉnh nếu cần. Vì mục đích demo, ta sẽ dùng một bản rút gọn.
-        display_text = self._format_task_result_for_display_generic(data)
-        self._update_display_widget(target_widget, display_text)
+    def _populate_table_widget(self, table_widget, data_list):
+        table_widget.clearContents()
+        table_widget.setRowCount(0)
+        self.current_table_data = None # Clear previous table data for CSV export
 
-        is_utility_task = target_widget == self.text_utilities_results_qt
-        is_fix_task = target_widget == self.text_fixes_results_qt
+        if not data_list or not isinstance(data_list, list) or not isinstance(data_list[0], dict):
+            # If data is not suitable for table, show message in text view
+            # This case should ideally be handled by result_type="text"
+            table_widget.setColumnCount(1)
+            table_widget.setHorizontalHeaderLabels(["Thông báo"])
+            table_widget.setRowCount(1)
+            table_widget.setItem(0,0, QTableWidgetItem("Dữ liệu không phù hợp cho bảng hoặc không có dữ liệu."))
+            return
+
+        headers = list(data_list[0].keys())
+        table_widget.setColumnCount(len(headers))
+        table_widget.setHorizontalHeaderLabels(headers)
+        table_widget.setRowCount(len(data_list))
+
+        for row_idx, row_data in enumerate(data_list):
+            for col_idx, header in enumerate(headers):
+                item_value = str(row_data.get(header, ""))
+                table_widget.setItem(row_idx, col_idx, QTableWidgetItem(item_value))
+        
+        table_widget.resizeColumnsToContents()
+        self.current_table_data = data_list # Store for CSV export
+
+    def _on_generic_task_completed(self, task_name, data, target_stacked_widget, result_type="text"):
+        if result_type == "table" and isinstance(data, list) and data and isinstance(data[0], dict):
+            table_widget_target = target_stacked_widget.widget(1) # Assuming table is at index 1
+            if isinstance(table_widget_target, QTableWidget):
+                self._populate_table_widget(table_widget_target, data)
+                target_stacked_widget.setCurrentIndex(1) # Switch to table view
+                self.button_export_csv.setVisible(True)
+            else: # Fallback to text if widget at index 1 is not a table
+                result_type = "text" # Force text display
+        
+        if result_type == "text":
+            text_edit_target = target_stacked_widget.widget(0).findChild(QTextEdit) # TextEdit is in a QGroupBox
+            display_text = self._format_task_result_for_display_generic(data)
+            self._update_display_widget(text_edit_target, display_text)
+            target_stacked_widget.setCurrentIndex(0) # Switch to text view
+            self.button_export_csv.setVisible(False)
+
+        is_utility_task = target_stacked_widget == self.stacked_widget_results_utilities
+        is_fix_task = target_stacked_widget == self.stacked_widget_results_fixes
         if is_utility_task: self._toggle_buttons_qt(enable_save_utility=True)
         elif is_fix_task: self._toggle_buttons_qt(enable_save_fix=True)
 
     def _format_task_result_for_display_generic(self, result_data):
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold."""
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold.
-           Bỏ qua các giá trị không khả dụng hoặc rỗng."""
-
+           Bỏ qua các giá trị không khả dụng hoặc rỗng. Output is HTML."""
         UNAVAILABLE_STR_CONSTANTS = [NOT_AVAILABLE, NOT_FOUND, ERROR_WMI_CONNECTION]
 
         def is_value_unavailable(val):
@@ -1086,12 +1404,12 @@ class PcInfoAppQt(QMainWindow):
             return False
 
         if is_value_unavailable(result_data):
-            return "" # Return empty string if the entire result_data is unavailable
+            return html.escape(NOT_AVAILABLE) # Return escaped "Không khả dụng"
 
-        lines = []
+        html_lines = []
         if isinstance(result_data, list):
             if not result_data:
-                return "Tác vụ hoàn thành, không có mục nào được trả về."
+                return html.escape("Tác vụ hoàn thành, không có mục nào được trả về.")
             for item in result_data:
                 if is_value_unavailable(item):
                     continue # Skip unavailable items in a list
@@ -1099,50 +1417,50 @@ class PcInfoAppQt(QMainWindow):
                     item_lines = []
                     for k, v_raw in item.items():
                         if not is_value_unavailable(v_raw):
-                            item_lines.append(f"  **{k}:** {v_raw}")
+                            item_lines.append(f"  <b>{html.escape(str(k))}:</b> {html.escape(str(v_raw))}")
                     if item_lines: # Only add if there's something to show for this item
-                        lines.append("\n".join(item_lines))
+                        html_lines.append("<br>".join(item_lines))
                 else:
-                    lines.append(str(item))
-            if not lines:
-                return "" # Or a message like "Không có thông tin khả dụng."
-            return "\n---\n".join(lines)
+                    html_lines.append(html.escape(str(item)))
+            if not html_lines:
+                return html.escape("Không có thông tin khả dụng.")
+            return "<br>---<br>".join(html_lines)
 
         elif isinstance(result_data, dict):
             if not result_data:
-                return "Tác vụ hoàn thành, không có dữ liệu trả về (dict rỗng)."
+                return html.escape("Tác vụ hoàn thành, không có dữ liệu trả về (dict rỗng).")
             
             if "message" in result_data and "status" in result_data: # Special status dict
                 status_val = result_data.get('status', 'N/A')
                 message_val = result_data['message']
 
                 if not is_value_unavailable(status_val):
-                    lines.append(f"**Trạng thái:** {status_val}")
+                    html_lines.append(f"<b>Trạng thái:</b> {html.escape(str(status_val))}")
                 if not is_value_unavailable(message_val):
-                    lines.append(f"**Thông điệp:** {message_val}")
+                    html_lines.append(f"<b>Thông điệp:</b> {html.escape(str(message_val))}")
                 
                 if "details" in result_data and not is_value_unavailable(result_data['details']):
                     details_content = result_data['details']
-                    details_str_list = ["\n**Chi tiết:**"]
+                    details_html_parts = ["<br><b>Chi tiết:</b>"] # Start with a line break if there are previous lines
                     has_details_to_show = False
                     if isinstance(details_content, dict):
                         for k_detail, v_detail_raw in details_content.items():
                             if not is_value_unavailable(v_detail_raw):
                                 has_details_to_show = True
                                 if k_detail == 'errors_list' and isinstance(v_detail_raw, list) and v_detail_raw:
-                                    details_str_list.append(f"  **Lỗi chi tiết:**")
+                                    details_html_parts.append(f"  <b>Lỗi chi tiết:</b>")
                                     errors_shown_count = 0
                                     for err_item in v_detail_raw:
                                         if not is_value_unavailable(err_item) and errors_shown_count < 5:
-                                            details_str_list.append(f"    - {err_item}")
+                                            details_html_parts.append(f"    - {html.escape(str(err_item))}")
                                             errors_shown_count += 1
                                     if sum(1 for e_item in v_detail_raw if not is_value_unavailable(e_item)) > 5:
-                                        details_str_list.append("    ...")
+                                        details_html_parts.append("    ...")
                                 elif k_detail in ['deleted_files_count', 'deleted_folders_count', 'total_size_freed_mb']:
-                                    details_str_list.append(f"  **{k_detail.replace('_', ' ').capitalize()}:** {v_detail_raw}")
+                                    details_html_parts.append(f"  <b>{html.escape(str(k_detail.replace('_', ' ').capitalize()))}:</b> {html.escape(str(v_detail_raw))}")
                                 else:
-                                    details_str_list.append(f"  **{k_detail}:** {v_detail_raw}")
-                        if has_details_to_show: lines.append("\n".join(details_str_list))
+                                    details_html_parts.append(f"  <b>{html.escape(str(k_detail))}:</b> {html.escape(str(v_detail_raw))}")
+                        if has_details_to_show: html_lines.append("<br>".join(details_html_parts))
                     elif isinstance(details_content, list): # if details is a list of strings
                         list_details_to_show = [f"  {d_item}" for d_item in details_content if not is_value_unavailable(d_item)]
                         if list_details_to_show:
@@ -1150,32 +1468,32 @@ class PcInfoAppQt(QMainWindow):
                             lines.append("\n".join(details_str_list))
                     else: # Generic details string
                         details_str_list.append(f"  {details_content}")
-                        lines.append("\n".join(details_str_list))
+                        html_lines.append("<br>".join(details_html_parts)) # Corrected variable
                 
                 if "path" in result_data and not is_value_unavailable(result_data['path']):
-                    lines.append(f"\n**Đường dẫn file:** {result_data['path']}")
-                if not lines: return ""
-                return "\n".join(lines)
+                    html_lines.append(f"<br><b>Đường dẫn file:</b> {html.escape(str(result_data['path']))}")
+                if not html_lines: return html.escape(NOT_AVAILABLE)
+                return "<br>".join(html_lines)
             else:
                 for k, v_raw in result_data.items():
                     if not is_value_unavailable(v_raw):
-                        lines.append(f"**{k}:** {v_raw}")
-                if not lines: return ""
-                return "\n".join(lines)
+                        html_lines.append(f"<b>{html.escape(str(k))}:</b> {html.escape(str(v_raw))}")
+                if not html_lines: return html.escape(NOT_AVAILABLE)
+                return "<br>".join(html_lines)
         else:
             # This case should have been caught by the initial is_value_unavailable(result_data)
             # but as a fallback, ensure we don't return the unavailable constant itself.
-            return str(result_data) if not is_value_unavailable(result_data) else ""
+            return html.escape(str(result_data)) if not is_value_unavailable(result_data) else html.escape(NOT_AVAILABLE)
 
     def enable_firewall_qt(self):
         if QMessageBox.question(self, "Xác nhận Bật Tường lửa", "Bạn có chắc chắn muốn BẬT Windows Firewall cho tất cả các profile không?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            self._run_task_in_thread_qt(self.text_utilities_results_qt, toggle_firewall, "utility_firewall_enable", needs_wmi=False, task_args=[True])
+            self._run_task_in_thread_qt(self.sender(), self.stacked_widget_results_utilities, toggle_firewall, "utility_firewall_enable", needs_wmi=False, task_args=[True])
 
     def disable_firewall_qt(self):
         if QMessageBox.question(self, "XÁC NHẬN TẮT TƯỜNG LỬA", "CẢNH BÁO: Tắt tường lửa có thể khiến máy tính của bạn dễ bị tấn công.\nBạn có chắc chắn muốn TẮT Windows Firewall cho tất cả các profile không?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            self._run_task_in_thread_qt(self.text_utilities_results_qt, toggle_firewall, "utility_firewall_disable", needs_wmi=False, task_args=[False])
+            self._run_task_in_thread_qt(self.sender(), self.stacked_widget_results_utilities, toggle_firewall, "utility_firewall_disable", needs_wmi=False, task_args=[False])
 
-    def closeEvent(self, event):
+    def closeEvent(self, event): # type: ignore
         # Dọn dẹp luồng khi đóng ứng dụng
         active_threads = [t for t in self.threads if t.isRunning()]
         if active_threads:
@@ -1213,19 +1531,43 @@ class PcInfoAppQt(QMainWindow):
         current_tab_widget = self.notebook.widget(index)
 
         if current_tab_widget == self.tab_utilities and hasattr(self, 'utilities_results_main_layout'):
-            self.utilities_results_main_layout.insertWidget(0, self.global_search_input) # Chèn vào đầu cột kết quả
+            # Insert search bar before the QStackedWidget in the results column
+            self.utilities_results_main_layout.insertWidget(0, self.global_search_input)
             self.global_search_input.show()
         elif current_tab_widget == self.tab_fixes and hasattr(self, 'fixes_results_main_layout'):
-            self.fixes_results_main_layout.insertWidget(0, self.global_search_input) # Chèn vào đầu cột kết quả
+            self.fixes_results_main_layout.insertWidget(0, self.global_search_input)
             self.global_search_input.show()
+        # Add other tabs if they need the global search bar
 
         # Clear highlights in text display areas
-        if hasattr(self, 'text_utilities_results_qt'):
-            self._clear_text_highlights(self.text_utilities_results_qt)
-        if hasattr(self, 'text_fixes_results_qt'):
-            self._clear_text_highlights(self.text_fixes_results_qt)
-        if hasattr(self, 'text_home_info_qt'): # Cũng xóa highlight ở tab Home
-            self._clear_text_highlights(self.text_home_info_qt)
+        if hasattr(self, 'stacked_widget_results_utilities'):
+            text_edit_utils = self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit)
+            if text_edit_utils: self._clear_text_highlights(text_edit_utils)
+        if hasattr(self, 'stacked_widget_results_fixes'):
+            text_edit_fixes = self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit)
+            if text_edit_fixes: self._clear_text_highlights(text_edit_fixes)
+        card_widgets = [self.card_general_info, self.card_os_info, self.card_cpu_info, self.card_ram_info, self.card_mainboard_info, self.card_disks_info, self.card_gpus_info, self.card_screens_info]
+        for card in card_widgets:
+            content_label = card.findChild(QLabel)
+            if content_label: # Assuming QLabel is used for card content
+                # For QLabels, re-setting the HTML content without search term effectively clears highlights
+                # This needs the original content to be stored or re-fetched if search was applied.
+                # For simplicity, we assume search on home tab is not implemented yet or handled differently.
+                pass # Placeholder for home tab card highlight clearing
+
+        # Hide/Show CSV export button based on current view in the active tab
+        self.button_export_csv.setVisible(False) # Default to hidden
+        if current_tab_widget == self.tab_utilities and self.stacked_widget_results_utilities.currentIndex() == 1:
+            self.button_export_csv.setVisible(True)
+        elif current_tab_widget == self.tab_fixes and self.stacked_widget_results_fixes.currentIndex() == 1:
+            self.button_export_csv.setVisible(True)
+
+    def _style_save_button(self, button, on_click_action):
+        button.setCursor(Qt.PointingHandCursor)
+        button.setFont(self.default_font)
+        button.setEnabled(False) # Initially disabled
+        button.setObjectName("SaveResultButton") # For QSS styling
+        button.clicked.connect(on_click_action)
 
 # Khối main để chạy thử trực tiếp file này (nếu cần)
 # if __name__ == "__main__":

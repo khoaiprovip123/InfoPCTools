@@ -148,17 +148,21 @@ def _format_dict_items(data_dict, keys_map):
     """
     lines = []
     if isinstance(data_dict, dict):
+        # Các hằng số chỉ trạng thái "không có giá trị" hoặc "không xác định"
+        UNAVAILABLE_VALUES = {None, "", NOT_IDENTIFIED, NOT_AVAILABLE}
+        # Các chuỗi con chỉ báo lỗi cần được hiển thị nguyên văn
+        ERROR_INDICATOR_SUBSTRINGS = {ERROR_FETCHING_INFO, ERROR_WMI_CONNECTION, NOT_FOUND}
+
         for data_key, display_name in keys_map:
             value = data_dict.get(data_key)
-            display_value = NOT_AVAILABLE
+            display_value = NOT_AVAILABLE # Giá trị hiển thị mặc định là "Không khả dụng"
 
-            if value is not None and value != "" and value != NOT_IDENTIFIED:
-                 # Check for known error/info strings within the value itself
-                if isinstance(value, str) and (ERROR_FETCHING_INFO in value or ERROR_WMI_CONNECTION in value or NOT_FOUND in value or NOT_AVAILABLE in value or NOT_IDENTIFIED in value):
-                    display_value = value # Keep the error/info string
-                else:
-                    display_value = value # Use the actual value
-            # else: display_value remains NOT_AVAILABLE
+            if value in UNAVAILABLE_VALUES:
+                display_value = NOT_AVAILABLE # Nếu giá trị là một trong các hằng số "không có", hiển thị "Không khả dụng"
+            elif isinstance(value, str) and any(err_sub in value for err_sub in ERROR_INDICATOR_SUBSTRINGS):
+                display_value = value # Nếu giá trị là chuỗi chứa thông báo lỗi, hiển thị nguyên văn chuỗi đó
+            else:
+                display_value = value # Trường hợp còn lại, hiển thị giá trị thực tế
 
             lines.append(f"  {display_name}: {display_value}")
     else:
@@ -188,7 +192,7 @@ def format_system_details_to_string(system_info_data_dict):
     """
     Định dạng phần "SystemInformation" của dữ liệu PC thành chuỗi dễ đọc.
     """
-    output_lines = ["**--- THÔNG TIN HỆ THỐNG ---**", ""] # Tiêu đề và dòng trống
+    output_lines = ["**--- THÔNG TIN HỆ THỐNG ---**"] # Tiêu đề, bỏ dòng trống sau tiêu đề chính
     pc_data = system_info_data_dict.get("PC", {})
     screen_data = system_info_data_dict.get("Màn hình", [])
 
@@ -304,14 +308,14 @@ def format_system_checks_to_string(system_checks_data_dict):
 
     if isinstance(system_checks_data_dict, dict) and "Lỗi" in system_checks_data_dict:
         output_lines.append("**--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---**")
-        output_lines.append("")
+        # output_lines.append("") # Bỏ dòng trống
         output_lines.append(f"Lỗi khi lấy thông tin kiểm tra hệ thống: {system_checks_data_dict['Lỗi']}")
         return "\n".join(output_lines) # Trả về sớm nếu có lỗi tổng thể
 
     # Nếu không có lỗi tổng thể và có dữ liệu
     output_lines.append("**--- KIỂM TRA TÌNH TRẠNG HỆ THỐNG ---**")
     output_lines.append("")
-
+    
     uptime = system_checks_data_dict.get("Thời gian hoạt động", NOT_AVAILABLE)
     output_lines.append(f"**Thời gian hoạt động hệ thống:**\n  {uptime}\n")
 
@@ -333,7 +337,7 @@ def format_system_checks_to_string(system_checks_data_dict):
                 lines.append(f"  Trạng thái: {status}") # Giữ thụt lề '  ' cho dòng con
             return lines
     output_lines.extend(_format_list_of_dicts(disk_usage_list, "Ổ đĩa", format_disk_usage_item))
-    output_lines.append("") # Thêm dòng trống cuối section
+    # output_lines.append("") # Bỏ dòng trống cuối section
 
     event_log_summary = system_checks_data_dict.get("Tóm tắt Event Log gần đây", {})
     output_lines.append("**Tóm tắt Event Log (24 giờ qua):**")
@@ -345,14 +349,14 @@ def format_system_checks_to_string(system_checks_data_dict):
         output_lines.append(f"  Lỗi: {event_log_summary['Lỗi']} {event_log_summary.get('Chi tiết', '')}".strip())
     else: # Trường hợp event_log_summary là rỗng hoặc không có key "Lỗi"
         output_lines.append(f"  {NOT_AVAILABLE}")
-    output_lines.append("")
+    # output_lines.append("") # Bỏ dòng trống
 
     temperatures = system_checks_data_dict.get("Nhiệt độ hệ thống", [])
     output_lines.append("**Nhiệt độ Hệ thống:**")
     def format_temp_item(temp_item):
         return [f"{temp_item.get('Vùng', NOT_IDENTIFIED)}: {temp_item.get('Nhiệt độ (°C)', NOT_AVAILABLE)} °C"] # Bỏ thụt lề '  '
     output_lines.extend(_format_list_of_dicts(temperatures, "Cảm biến", format_temp_item))
-    output_lines.append("")
+    # output_lines.append("") # Bỏ dòng trống
 
     return "\n".join(output_lines)
 
