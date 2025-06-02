@@ -9,12 +9,12 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QTabWidget,
+    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QStackedWidget, QListWidget, QListWidgetItem, QSplitter,
     QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView,
     QCheckBox
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor, QTextCharFormat, QTextCursor
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize # Import QSize
 
 import win32com.client # For CoInitialize/CoUninitialize in threads
 
@@ -53,39 +53,46 @@ MONOSPACE_FONT_SIZE = 9
 HIGHLIGHT_COLOR = QColor(255, 236, 179) # Material Amber A100 (FFECB3) for text search
 
 # New Color Palette (Material Design inspired)
-WINDOW_BG = "#ECEFF1"        # Blue Grey 50 (Main background)
-FRAME_BG = "#FFFFFF"         # White (For content containers like tab panes)
-GROUPBOX_BG = "#FFFFFF"      # White (Background for GroupBoxes)
-TEXT_COLOR_PRIMARY = "#263238" # Blue Grey 900 (Main text color)
-TEXT_COLOR_SECONDARY = "#546E7A" # Blue Grey 600 (Secondary text, e.g., less important labels)
-BORDER_COLOR_LIGHT = "#CFD8DC" # Blue Grey 100 (Light borders)
-BORDER_COLOR_DARK = "#B0BEC5"  # Blue Grey 200 (Darker borders, scrollbar handles)
-ACCENT_COLOR = "#03A9F4"     # Light Blue 500 (Primary accent for highlights, active states)
-ACCENT_COLOR_HOVER = "#039BE5"  # Light Blue 600
-ACCENT_COLOR_PRESSED = "#0288D1" # Light Blue 700
+PRIMARY_COLOR = "#2196F3"  # Xanh dương (Blue)
+SECONDARY_COLOR = "#4CAF50" # Xanh lá (Green)
+ACCENT_COLOR = "#FF9800"   # Cam (Orange)
 
-BUTTON_PRIMARY_BG = ACCENT_COLOR
-BUTTON_PRIMARY_HOVER = ACCENT_COLOR_HOVER
-BUTTON_PRIMARY_PRESSED = ACCENT_COLOR_PRESSED
+WINDOW_BG = "#E3F2FD"        # Light Blue 50 (Main background, derived from Primary)
+FRAME_BG = "#FFFFFF"         # White (For content containers like tab panes - kept)
+GROUPBOX_BG = "#FFFFFF"      # White (Background for GroupBoxes - kept)
+TEXT_COLOR_PRIMARY = "#212121" # Dark Grey (Good contrast)
+TEXT_COLOR_SECONDARY = "#757575" # Medium Grey
 
-BUTTON_SECONDARY_BG = "#CFD8DC" # Blue Grey 100
-BUTTON_SECONDARY_HOVER = "#B0BEC5" # Blue Grey 200
-BUTTON_SECONDARY_PRESSED = "#90A4AE" # Blue Grey 300
+BORDER_COLOR_LIGHT = "#BBDEFB" # Light Blue 100 (Derived from Primary)
+BORDER_COLOR_DARK = "#90CAF9"  # Light Blue 200 (Derived from Primary, for scrollbar handles etc.)
+
+ACCENT_COLOR_HOVER = "#FFA726"  # Orange 400 (Derived from Accent)
+ACCENT_COLOR_PRESSED = "#FB8C00" # Orange 600 (Derived from Accent)
+
+BUTTON_PRIMARY_BG = PRIMARY_COLOR
+BUTTON_PRIMARY_HOVER = "#1E88E5"  # Blue 600 (Derived from Primary)
+BUTTON_PRIMARY_PRESSED = "#1976D2" # Blue 700 (Derived from Primary)
+
+BUTTON_SECONDARY_BG = "#E0E0E0" # Grey 300 (Neutral secondary button)
+BUTTON_SECONDARY_HOVER = "#BDBDBD" # Grey 400
+BUTTON_SECONDARY_PRESSED = "#9E9E9E" # Grey 500
 BUTTON_SECONDARY_TEXT = TEXT_COLOR_PRIMARY
 
-BUTTON_EXPORT_BG = "#4CAF50"  # Green 500
-BUTTON_EXPORT_HOVER = "#43A047" # Green 600
-BUTTON_EXPORT_PRESSED = "#388E3C" # Green 700
+BUTTON_EXPORT_BG = SECONDARY_COLOR
+BUTTON_EXPORT_HOVER = "#43A047" # Green 600 (Darker shade of Secondary)
+BUTTON_EXPORT_PRESSED = "#388E3C" # Green 700 (Even darker shade of Secondary)
+
 BUTTON_DANGER_BG = "#F44336"  # Red 500
 BUTTON_DANGER_HOVER = "#E53935" # Red 600
 
 INPUT_BG = "#FFFFFF"         # Background for QLineEdit, QComboBox, etc.
-INPUT_BORDER_COLOR = "#90A4AE" # Blue Grey 300 for input borders
+INPUT_BORDER_COLOR = "#BDBDBD" # Grey 400 for input borders (Neutral)
 
-TAB_BG_INACTIVE = "#B0BEC5" # Blue Grey 200
+TAB_BG_INACTIVE = "#90CAF9" # Light Blue 200 (Derived from Primary, same as BORDER_COLOR_DARK)
+
 TAB_BG_ACTIVE = FRAME_BG    # White, same as pane
 TAB_TEXT_INACTIVE = TEXT_COLOR_PRIMARY
-TAB_TEXT_ACTIVE = ACCENT_COLOR
+TAB_TEXT_ACTIVE = ACCENT_COLOR # Orange for active tab text
 
 # HTML text colors (used in _update_display_widget)
 DEFAULT_TEXT_COLOR_HTML = TEXT_COLOR_PRIMARY
@@ -171,6 +178,11 @@ class PcInfoAppQt(QMainWindow):
         # self.formatted_pc_info_string_home = "Chưa lấy thông tin." # No longer needed as we populate cards
         self.current_table_data = None # To store data for CSV export
 
+        self.NAV_EXPANDED_WIDTH = 200
+        self.NAV_COLLAPSED_WIDTH = 55 # Adjusted for icon + padding
+        self.nav_panel_is_collapsed = False
+        self.nav_is_collapsed = False # State for navigation panel
+
         self.threads = [] # List để giữ các QThread đang chạy
 
         self._load_logo()
@@ -209,87 +221,138 @@ class PcInfoAppQt(QMainWindow):
         self.main_layout = QVBoxLayout(self.central_widget)
 
         # --- Top Frame for Logo and Title ---
-        top_frame = QFrame()
-        top_frame_layout = QVBoxLayout(top_frame) # This can remain QVBoxLayout if we only have one main row. Or change to QHBoxLayout if search is truly inline. Let's adjust header_row_layout.
-        top_frame_layout.setContentsMargins(0,0,0,0)
+        # This frame will contain the greeting and logo
+        top_header_frame = QFrame()
+        top_header_layout = QHBoxLayout(top_header_frame)
+        top_header_layout.setContentsMargins(5, 5, 10, 5) # Adjust left margin for collapse button
+
+        # --- Navigation Toggle Button ---
+        # Nút self.button_toggle_nav_panel đã được loại bỏ theo yêu cầu.
+        # Icon sẽ được tải cho nút ở dưới (nav_list_toggle_button_bottom)
+        try:
+            self.icon_collapse_nav = QIcon(resource_path(os.path.join("assets", "icons", "menu_collapse.png"))) # e.g. left arrow or hamburger
+            self.icon_expand_nav = QIcon(resource_path(os.path.join("assets", "icons", "menu_expand.png")))     # e.g. right arrow
+        except Exception as e:
+            logging.warning(f"Không thể tải icon cho nút thu/gọn thanh điều hướng: {e}")
 
         font_title = QFont(DEFAULT_FONT_FAMILY, 16, QFont.Bold)
-
-        header_row_widget = QWidget() # Widget for the first row (greeting and logo)
-        header_row_layout = QHBoxLayout(header_row_widget)
-        header_row_layout.setContentsMargins(0,0,0,0)
         
         self.greeting_label = QLabel("Chào bạn!") # Default greeting
         self.greeting_label.setFont(font_title) # Sử dụng font của tiêu đề cũ
         self.greeting_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
-        header_row_layout.addWidget(self.greeting_label)
-        header_row_layout.addStretch(1)
-        # Global Search Bar will be moved to be alongside the TabWidget
+        top_header_layout.addWidget(self.greeting_label)
+        top_header_layout.addStretch(1)
 
         if self.logo_pixmap:
             self.logo_label = QLabel()
             self.logo_label.setPixmap(self.logo_pixmap)
-            header_row_layout.addWidget(self.logo_label) # Logo is now at the end of this row
-        top_frame_layout.addWidget(header_row_widget) # Add the (now populated) header row to the top frame
+            top_header_layout.addWidget(self.logo_label)
 
-        self.main_layout.addWidget(top_frame) # Thêm top_frame vào main_layout
+        self.main_layout.addWidget(top_header_frame)
 
-        # --- Global Search Input (khởi tạo một lần, sẽ được thêm vào layout của tab cụ thể) ---
+        # --- Main content area with Side Navigation and StackedWidget ---
+        self.main_content_splitter = QSplitter(Qt.Horizontal) # Assign to self
+        self.main_layout.addWidget(self.main_content_splitter, 1) # Add splitter with stretch factor
+
+        # --- Left: Navigation Panel (Container for List and Toggle Button) ---
+        left_nav_panel_widget = QWidget()
+        left_nav_panel_layout = QVBoxLayout(left_nav_panel_widget)
+        left_nav_panel_layout.setContentsMargins(0,0,0,0)
+        left_nav_panel_layout.setSpacing(0) # No spacing between list and button
+
+        self.nav_list_widget = QListWidget()
+        self.nav_list_widget.setFont(self.bold_font) # Bolder font for nav items
+        # self.nav_list_widget.setFixedWidth(self.NAV_EXPANDED_WIDTH) # Width will be controlled by splitter
+        self.nav_list_widget.setObjectName("NavList")
+        left_nav_panel_layout.addWidget(self.nav_list_widget, 1) # List takes available space
+
+        # New toggle button at the bottom of the nav list
+        self.nav_list_toggle_button_bottom = QPushButton()
+        self.nav_list_toggle_button_bottom.setCursor(Qt.PointingHandCursor)
+        self.nav_list_toggle_button_bottom.setObjectName("NavToggleBottomButton")
+        self.nav_list_toggle_button_bottom.clicked.connect(self._toggle_nav_panel_visibility)
+        self.nav_list_toggle_button_bottom.setFixedHeight(35) # Set a fixed height
+        # Icon and text will be set in _update_toggle_nav_button_state
+        left_nav_panel_layout.addWidget(self.nav_list_toggle_button_bottom)
+
+        self.main_content_splitter.addWidget(left_nav_panel_widget)
+
+        # --- Right: Content Area (Search + StackedWidget) ---
+        right_pane_widget = QWidget()
+        right_pane_layout = QVBoxLayout(right_pane_widget)
+        right_pane_layout.setContentsMargins(0,0,0,0) # No margins for the container itself
+        right_pane_layout.setSpacing(5)
+
+        # Container for the global search bar
+        self.search_bar_container = QWidget()
+        search_bar_layout = QHBoxLayout(self.search_bar_container)
+        search_bar_layout.setContentsMargins(5,0,5,0) # Small margins for search bar
         self.global_search_input = QLineEdit()
         self.global_search_input.setFont(self.default_font)
         self.global_search_input.setPlaceholderText("Tìm kiếm trong tab...")
         self.global_search_input.textChanged.connect(lambda: self.global_search_timer.start(300))
-        self.global_search_input.hide() # Ẩn ban đầu
+        search_bar_layout.addWidget(self.global_search_input)
+        self.search_bar_container.setVisible(False) # Initially hidden
+        right_pane_layout.addWidget(self.search_bar_container)
 
-        # --- Notebook (QTabWidget) ---
-        self.notebook = QTabWidget()
-        self.notebook.setFont(self.bold_font)
-        self.main_layout.addWidget(self.notebook)
+        self.pages_stack = QStackedWidget()
+        right_pane_layout.addWidget(self.pages_stack, 1) # StackedWidget takes remaining space
 
-
-        # --- Tab: Trang chủ ---
-        self.tab_home = QWidget()
-        self.notebook.addTab(self.tab_home, "Trang Chủ")
-        self._create_home_tab(self.tab_home)
-
-        # --- Tab: Tiện ích ---
-        self.tab_utilities = QWidget()
-        self.notebook.addTab(self.tab_utilities, "Tiện Ích")
-        self._create_utilities_tab(self.tab_utilities)
-
-        # --- Tab: Sửa lỗi hệ thống ---
-        self.tab_fixes = QWidget()
-        self.notebook.addTab(self.tab_fixes, "Fix Hệ Thống")
-        self._create_fixes_tab(self.tab_fixes)
-
-        # --- Tab: Thông tin hệ thống ---
-        self.tab_about = QWidget()
-        self.notebook.addTab(self.tab_about, "Thông Tin Hệ Thống")
-        self._create_about_tab(self.tab_about)
-
-        # Kết nối tín hiệu currentChanged SAU KHI tất cả các tab đã được tạo và gán thuộc tính
-        self.notebook.currentChanged.connect(self._on_tab_changed_search_clear)
+        self.main_content_splitter.addWidget(right_pane_widget)
+        self.main_content_splitter.setSizes([self.NAV_EXPANDED_WIDTH, 750]) # Initial sizes for nav and content
 
         # --- Global Buttons Frame ---
+        # MOVED EARLIER TO ENSURE BUTTONS EXIST BEFORE _on_navigation_changed IS CALLED
         global_buttons_frame = QFrame()
         global_buttons_layout = QHBoxLayout(global_buttons_frame)
+        global_buttons_layout.setContentsMargins(10, 5, 10, 5) # Thêm margins cho global buttons
+        global_buttons_layout.addStretch(1) # Stretch sẽ đẩy các nút sau nó sang phải
 
-        self.button_export_home = QPushButton("Xuất Báo Cáo PC")
-        self.button_export_home.setFont(self.default_font)
-        self.button_export_home.setFixedWidth(200)
-        self.button_export_home.setCursor(Qt.PointingHandCursor)
-        self.button_export_home.clicked.connect(self.on_export_info_qt)
-        self.button_export_home.setEnabled(False)
-        global_buttons_layout.addWidget(self.button_export_home)
-        global_buttons_layout.addStretch(1)
-        
-        self.button_export_csv = QPushButton("Xuất CSV (Bảng)")
-        self.button_export_csv.setFont(self.default_font)
-        self.button_export_csv.setFixedWidth(150)
-        self.button_export_csv.setCursor(Qt.PointingHandCursor)
-        self.button_export_csv.clicked.connect(self.on_export_csv_qt)
-        self.button_export_csv.setVisible(False) # Initially hidden
-        global_buttons_layout.addWidget(self.button_export_csv)
+        # --- Nút Làm mới Dữ liệu PC (sẽ được hiển thị/ẩn tùy theo tab) ---
+        self.button_refresh_home_qt = QPushButton("Làm mới Dữ liệu PC")
+        self.button_refresh_home_qt.setFont(self.default_font)
+        self.button_refresh_home_qt.setCursor(Qt.PointingHandCursor)
+        self.button_refresh_home_qt.clicked.connect(self.fetch_pc_info_threaded)
+        self.button_refresh_home_qt.setVisible(False) # Ban đầu ẩn
+        global_buttons_layout.addWidget(self.button_refresh_home_qt)
+
+        self.button_save_active_tab_result = QPushButton("Lưu Kết Quả Tab")
+        self.button_save_active_tab_result.setFont(self.default_font)
+        self.button_save_active_tab_result.setFixedWidth(180) # Điều chỉnh độ rộng nếu cần
+        self.button_save_active_tab_result.setCursor(Qt.PointingHandCursor)
+        self.button_save_active_tab_result.clicked.connect(self.on_save_active_tab_result_qt)
+        self.button_save_active_tab_result.setVisible(False) # Ban đầu ẩn, sẽ được quản lý bởi _update_active_save_button_state
+        global_buttons_layout.addWidget(self.button_save_active_tab_result) # Thêm nút lưu/xuất
+
+
+        # --- Populate Navigation and Pages ---
+        self.page_home = QWidget()
+        self._create_home_tab(self.page_home)
+        self._add_navigation_item("Trang Chủ", self.page_home, icon_path=resource_path(os.path.join("assets", "icons", "home.png")))
+
+        self.page_utilities = QWidget()
+        self._create_utilities_tab(self.page_utilities)
+        self._add_navigation_item("Tiện Ích", self.page_utilities, icon_path=resource_path(os.path.join("assets", "icons", "utilities.png")))
+
+        self.page_fixes = QWidget()
+        self._create_fixes_tab(self.page_fixes)
+        self._add_navigation_item("Fix Hệ Thống", self.page_fixes, icon_path=resource_path(os.path.join("assets", "icons", "system_fix.png")))
+
+        self.page_about = QWidget()
+        self._create_about_tab(self.page_about)
+        self._add_navigation_item("Thông Tin Khác", self.page_about, icon_path=resource_path(os.path.join("assets", "icons", "about.png"))) # Đổi tên và icon
+
+        self.nav_list_widget.currentRowChanged.connect(self._on_navigation_changed)
+        self.nav_list_widget.setCurrentRow(0) # Select the first item
+        self._update_toggle_nav_button_state() # Set initial tooltip
+
+        # self.button_export_csv = QPushButton("Xuất CSV (Bảng)")
+        # self.button_export_csv.setFont(self.default_font)
+        # self.button_export_csv.setFixedWidth(150)
+        # self.button_export_csv.setCursor(Qt.PointingHandCursor)
+        # self.button_export_csv.clicked.connect(self.on_export_csv_qt)
+        # self.button_export_csv.setVisible(False) # Initially hidden
+        # global_buttons_layout.addWidget(self.button_export_csv)
         # global_buttons_layout.addStretch(1) # Removed to keep export buttons together
 
         self.button_exit = QPushButton("Thoát")
@@ -300,6 +363,28 @@ class PcInfoAppQt(QMainWindow):
         global_buttons_layout.addWidget(self.button_exit)
 
         self.main_layout.addWidget(global_buttons_frame)
+
+    def _add_navigation_item(self, name, page_widget, icon_path=None):
+        item = QListWidgetItem(name)
+        item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        # item.setSizeHint(QSize(0, 35)) # Adjust item height if needed
+        if icon_path and os.path.exists(icon_path):
+            try:
+                icon = QIcon(icon_path)
+                if not icon.isNull():
+                    item.setIcon(icon)
+                else:
+                    logging.warning(f"Could not create QIcon from: {icon_path} for item '{name}'")
+            except Exception as e:
+                logging.warning(f"Error loading icon {icon_path} for item '{name}': {e}")
+        elif icon_path:
+             logging.warning(f"Icon path not found: {icon_path} for item '{name}'")
+
+        self.nav_list_widget.addItem(item)
+        self.pages_stack.addWidget(page_widget)
+        # Set icon size for the list widget items if desired
+        icon_dimension = int(self.nav_list_widget.fontMetrics().height() * 1.2) # Calculate dimension as integer
+        self.nav_list_widget.setIconSize(QSize(icon_dimension, icon_dimension)) # Create QSize object
 
     def _create_home_tab(self, parent_tab_widget):
         layout = QVBoxLayout(parent_tab_widget)
@@ -345,7 +430,7 @@ class PcInfoAppQt(QMainWindow):
         self.entry_position_qt.setFont(self.default_font)
         user_info_grid_layout.addWidget(self.entry_position_qt, 2, 1) # Ô nhập Chức Vụ ở dòng 2, cột 1 (không kéo dài)
 
-        self.checkbox_show_notes = QCheckBox("Ghi chú")
+        self.checkbox_show_notes = QCheckBox("Thêm ghi chú")
         self.checkbox_show_notes.setFont(self.default_font)
         self.checkbox_show_notes.toggled.connect(self.toggle_notes_visibility)
         user_info_grid_layout.addWidget(self.checkbox_show_notes, 2, 2, 1, 2) # Checkbox ở dòng 2, cột 2, kéo dài 2 cột còn lại
@@ -396,13 +481,6 @@ class PcInfoAppQt(QMainWindow):
 
         cards_scroll_area.setWidget(cards_container_widget)
         layout.addWidget(cards_scroll_area, 1) # Add scroll area to the main tab layout
-
-        # --- Button to refresh Home tab info ---
-        self.button_refresh_home_qt = QPushButton("Làm mới Dữ liệu PC")
-        self.button_refresh_home_qt.setFont(self.default_font)
-        self.button_refresh_home_qt.setCursor(Qt.PointingHandCursor)
-        self.button_refresh_home_qt.clicked.connect(self.fetch_pc_info_threaded)
-        layout.addWidget(self.button_refresh_home_qt, 0, Qt.AlignCenter)
 
     def _create_info_card(self, title):
         card = QGroupBox(title)
@@ -504,7 +582,7 @@ class PcInfoAppQt(QMainWindow):
         self.utilities_actions_layout.addStretch(1) # Đẩy các group lên trên
         scroll_area_actions.setWidget(actions_widget_container)
         left_column_layout.addWidget(scroll_area_actions) # Add scroll area below search bar
-        content_layout.addWidget(left_column_widget, 1) # Tỷ lệ 1 cho cột trái
+        content_layout.addWidget(left_column_widget, 2) # Tăng tỷ lệ cho cột trái
 
         # --- Right Column: Utilities Results Display ---
         results_container_widget = QWidget()
@@ -539,16 +617,16 @@ class PcInfoAppQt(QMainWindow):
 
         self.utilities_results_main_layout.addWidget(self.stacked_widget_results_utilities, 1)
 
-        # Buttons dưới ô kết quả
-        utils_buttons_frame = QFrame()
-        utils_buttons_layout_inner = QHBoxLayout(utils_buttons_frame) # Layout nội bộ cho các nút
-        utils_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
-        self.button_save_utility_result_qt = QPushButton("Lưu Kết Quả")
-        self._style_save_button(self.button_save_utility_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_utilities, "KetQua_TienIch"))
-        utils_buttons_layout_inner.addWidget(self.button_save_utility_result_qt)
-        self.utilities_results_main_layout.addWidget(utils_buttons_frame)
+        # Buttons dưới ô kết quả (ĐÃ DI CHUYỂN RA GLOBAL)
+        # utils_buttons_frame = QFrame()
+        # utils_buttons_layout_inner = QHBoxLayout(utils_buttons_frame) # Layout nội bộ cho các nút
+        # utils_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
+        # self.button_save_utility_result_qt = QPushButton("Lưu Kết Quả")
+        # self._style_save_button(self.button_save_utility_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_utilities, "KetQua_TienIch"))
+        # utils_buttons_layout_inner.addWidget(self.button_save_utility_result_qt)
+        # self.utilities_results_main_layout.addWidget(utils_buttons_frame)
 
-        content_layout.addWidget(results_container_widget, 2) # Tỷ lệ 2 cho cột phải
+        content_layout.addWidget(results_container_widget, 3) # Điều chỉnh tỷ lệ cho cột phải
 
     def _add_utility_button(self, layout, text, on_click_action, object_name=None):
         button = QPushButton(text)
@@ -603,7 +681,7 @@ class PcInfoAppQt(QMainWindow):
         self.fixes_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(actions_widget_container)
         left_column_layout_fixes.addWidget(scroll_area_actions) # Add scroll area below search bar
-        content_layout_fixes.addWidget(left_column_widget_fixes, 1) # Tỷ lệ 1 cho cột trái
+        content_layout_fixes.addWidget(left_column_widget_fixes, 2) # Tăng tỷ lệ cho cột trái
 
 
         # Right Column: Fixes Results Display
@@ -638,35 +716,35 @@ class PcInfoAppQt(QMainWindow):
 
         self.fixes_results_main_layout.addWidget(self.stacked_widget_results_fixes, 1)
         
-        # Frame cho nút lưu kết quả ở tab Fixes
-        fixes_buttons_frame = QFrame()
-        fixes_buttons_layout_inner = QHBoxLayout(fixes_buttons_frame) # Layout nội bộ cho các nút
-        fixes_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
-        self.button_save_fix_result_qt = QPushButton("Lưu Kết Quả Sửa Lỗi")
-        self._style_save_button(self.button_save_fix_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_fixes, "KetQua_SuaLoi"))
-        fixes_buttons_layout_inner.addWidget(self.button_save_fix_result_qt)
-        self.fixes_results_main_layout.addWidget(fixes_buttons_frame)
+        # # Frame cho nút lưu kết quả ở tab Fixes (ĐÃ DI CHUYỂN RA GLOBAL)
+        # fixes_buttons_frame = QFrame()
+        # fixes_buttons_layout_inner = QHBoxLayout(fixes_buttons_frame) # Layout nội bộ cho các nút
+        # fixes_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
+        # self.button_save_fix_result_qt = QPushButton("Lưu Kết Quả Sửa Lỗi")
+        # self._style_save_button(self.button_save_fix_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_fixes, "KetQua_SuaLoi"))
+        # fixes_buttons_layout_inner.addWidget(self.button_save_fix_result_qt)
+        # self.fixes_results_main_layout.addWidget(fixes_buttons_frame)
 
-        content_layout_fixes.addWidget(results_container_widget, 2) # Tỷ lệ 2 cho cột phải
+        content_layout_fixes.addWidget(results_container_widget, 3) # Điều chỉnh tỷ lệ cho cột phải
 
     def _perform_global_search(self):
         """Thực hiện tìm kiếm/lọc dựa trên tab hiện tại và nội dung của global_search_input."""
         if not hasattr(self, 'global_search_input'):
             return
         search_term = self.global_search_input.text()
-        current_widget = self.notebook.currentWidget()
+        current_page_widget = self.pages_stack.currentWidget()
 
-        if current_widget == self.tab_utilities:
+        if current_page_widget == self.page_utilities:
             if hasattr(self, 'utilities_actions_layout'):
                 self._filter_action_buttons(search_term, self.utilities_actions_layout)
             if hasattr(self, 'stacked_widget_results_utilities') and self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit):
                 self._perform_text_search(self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit), search_term)
-        elif current_widget == self.tab_fixes:
+        elif current_page_widget == self.page_fixes:
             if hasattr(self, 'fixes_actions_layout'):
                 self._filter_action_buttons(search_term, self.fixes_actions_layout)
             if hasattr(self, 'stacked_widget_results_fixes') and self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit):
                 self._perform_text_search(self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit), search_term)
-        # Thêm các tab khác nếu cần tìm kiếm
+        # Add other pages if they need search functionality
 
 
     def _create_about_tab(self, parent_tab_widget):
@@ -674,6 +752,7 @@ class PcInfoAppQt(QMainWindow):
         layout.setContentsMargins(20, 20, 20, 20) # Thêm padding cho dễ nhìn
         layout.setSpacing(15)
         layout.setAlignment(Qt.AlignTop)
+        # Styling for button_save_active_tab_result will be handled in _apply_styles
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -844,6 +923,20 @@ class PcInfoAppQt(QMainWindow):
                 border-color: {BORDER_COLOR_LIGHT};
                 border-bottom: 1px solid {TAB_BG_ACTIVE}; /* "Erase" tab bottom border with pane color */
             }}
+            QListWidget#NavList {{
+                background-color: {WINDOW_BG}; /* Match window background or a slightly different shade */
+                border: 1px solid {BORDER_COLOR_LIGHT};
+                padding: 5px;
+                outline: 0; /* Remove focus outline if not desired */
+            }}
+            QListWidget#NavList::item {{
+                padding: 10px 8px; /* Padding for each item */
+                border-radius: 4px; /* Rounded corners for items */
+            }}
+            QListWidget#NavList::item:selected {{
+                background-color: {PRIMARY_COLOR}; /* Primary color for selected item */
+                color: white; /* White text for selected item */
+            }}
             QTabBar::tab:!selected:hover {{
                 background: {ACCENT_COLOR_HOVER}; /* Use accent color for hover on inactive tabs */
                 color: white;
@@ -852,6 +945,10 @@ class PcInfoAppQt(QMainWindow):
                 border: none;
                 background-color: transparent; /* Scroll area background should be transparent */
             }}
+            QSplitter::handle {{
+                background-color: {BORDER_COLOR_LIGHT}; /* Color for the splitter handle */
+            }}
+            QSplitter::handle:hover {{ background-color: {BORDER_COLOR_DARK}; }}
             QScrollBar:vertical {{
                 border: 1px solid {BORDER_COLOR_LIGHT};
                 background: {WINDOW_BG};
@@ -899,17 +996,8 @@ class PcInfoAppQt(QMainWindow):
                 font-weight: bold;
             }}
         """)
-
+        # Nút self.button_toggle_nav_panel đã bị xóa, nên không cần style cho nó nữa.
         # Specific button styles (override general QPushButton style)
-        self.button_export_home.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {BUTTON_EXPORT_BG};
-                color: white;
-                border: none;
-            }}
-            QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
-            QPushButton:pressed {{ background-color: {BUTTON_EXPORT_PRESSED}; }}
-        """)
         self.button_exit.setStyleSheet(f"""
             QPushButton {{
                 background-color: {BUTTON_DANGER_BG};
@@ -919,15 +1007,15 @@ class PcInfoAppQt(QMainWindow):
             QPushButton:hover {{ background-color: {BUTTON_DANGER_HOVER}; }}
             QPushButton:pressed {{ background-color: {BUTTON_DANGER_BG}; }}
         """)
-        self.button_export_csv.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {BUTTON_EXPORT_BG};
-                color: white;
-                border: none;
-            }}
-            QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
-            QPushButton:pressed {{ background-color: {BUTTON_EXPORT_PRESSED}; }}
-        """)
+        # self.button_export_csv.setStyleSheet(f"""
+        #     QPushButton {{
+        #         background-color: {BUTTON_EXPORT_BG};
+        #         color: white;
+        #         border: none;
+        #     }}
+        #     QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
+        #     QPushButton:pressed {{ background-color: {BUTTON_EXPORT_PRESSED}; }}
+        # """)
 
         # Style for "Refresh" button on Home tab
         if hasattr(self, 'button_refresh_home_qt'):
@@ -951,16 +1039,19 @@ class PcInfoAppQt(QMainWindow):
             QPushButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
             QPushButton:pressed {{ background-color: {ACCENT_COLOR_PRESSED}; }}
             QPushButton:disabled {{
-                background-color: #B0BEC5; /* Blue Grey 200 for disabled save */
-                color: #CFD8DC; /* Blue Grey 100 for disabled text */
+                background-color: {BORDER_COLOR_DARK}; /* Use a color from the new palette */
+                color: {TEXT_COLOR_SECONDARY}; /* Use a color from the new palette */
                 border: none;
             }}
         """
-        if hasattr(self, 'button_save_utility_result_qt'):
-            self.button_save_utility_result_qt.setStyleSheet(common_save_button_style)
-        if hasattr(self, 'button_save_fix_result_qt'):
-            self.button_save_fix_result_qt.setStyleSheet(common_save_button_style)
+        #if hasattr(self, 'button_save_utility_result_qt'):
+        #   self.button_save_utility_result_qt.setStyleSheet(common_save_button_style)
+        #if hasattr(self, 'button_save_fix_result_qt'):
+        #    self.button_save_fix_result_qt.setStyleSheet(common_save_button_style)
         
+        if hasattr(self, 'button_save_active_tab_result'):
+            self.button_save_active_tab_result.setStyleSheet(common_save_button_style)
+
         # Style for InfoCards on Home tab
         self.setStyleSheet(self.styleSheet() + f"""
             QGroupBox#InfoCard {{
@@ -1057,16 +1148,7 @@ class PcInfoAppQt(QMainWindow):
                     button.setVisible(button_visible)
                     if button_visible:
                         group_should_be_visible = True
-                group_box.setVisible(group_should_be_visible)
-
-    def _toggle_buttons_qt(self, enable_refresh_home=True, enable_export_home=False,
-                        enable_save_utility=False, enable_save_fix=False):
-        self.button_refresh_home_qt.setEnabled(enable_refresh_home)
-        self.button_export_home.setEnabled(enable_export_home and self.pc_info_dict is not None)
-        if hasattr(self, 'button_save_utility_result_qt'):
-            self.button_save_utility_result_qt.setEnabled(enable_save_utility)
-        if hasattr(self, 'button_save_fix_result_qt'):
-            self.button_save_fix_result_qt.setEnabled(enable_save_fix)
+                group_box.setVisible(group_should_be_visible) # Chỉ ẩn group nếu không có button nào khớp
 
     def fetch_pc_info_threaded(self):
         # Update placeholder text in cards
@@ -1079,8 +1161,6 @@ class PcInfoAppQt(QMainWindow):
             content_label = card.findChild(QLabel)
             if content_label:
                 self._update_display_widget(content_label, html.escape("Đang tải..."))
-
-        self._toggle_buttons_qt(enable_refresh_home=False, enable_export_home=False)
 
         # Pass the refresh button to the thread
         thread = WorkerThread(get_detailed_system_information, "fetch_pc_info", needs_wmi=False,
@@ -1142,7 +1222,10 @@ class PcInfoAppQt(QMainWindow):
             if user_name == NOT_AVAILABLE and "Tên máy tính" in pc_data: # Fallback for greeting
                 user_name = pc_data.get("Tên máy tính", "Người dùng")
             self.greeting_label.setText(f"Chào bạn, {user_name}!")
-            self._toggle_buttons_qt(enable_refresh_home=True, enable_export_home=True)
+            
+            # Kích hoạt nút "Xuất Báo Cáo PC" nếu đang ở tab Trang Chủ
+            if self.pages_stack.currentWidget() == self.page_home:
+                self.button_save_active_tab_result.setEnabled(True)
     def _on_task_error(self, task_name, error_message):
         logging.error(f"Error in task '{task_name}': {error_message}")
         is_fetch_pc_info = task_name == "fetch_pc_info"
@@ -1157,18 +1240,19 @@ class PcInfoAppQt(QMainWindow):
                 content_label = card.findChild(QLabel)
                 if content_label:
                     self._update_display_widget(content_label, html.escape(error_text_for_cards).replace("\n", "<br>"), is_error=True)
-            self._toggle_buttons_qt(enable_refresh_home=True, enable_export_home=False)
+            if self.pages_stack.currentWidget() == self.page_home:
+                self.button_save_active_tab_result.setEnabled(False)
         elif is_utility_task:
             # Determine if the error should go to QTextEdit or QTableWidget (or just show in QTextEdit)
             self.stacked_widget_results_utilities.setCurrentIndex(0) # Show QTextEdit for errors
             text_edit_target = self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit)
             self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
-            self._toggle_buttons_qt(enable_save_utility=True) # Vẫn cho phép lưu lỗi nếu muốn
+            self._update_save_button_state_for_tab_content(self.stacked_widget_results_utilities)
         elif is_fix_task:
             self.stacked_widget_results_fixes.setCurrentIndex(0)
             text_edit_target = self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit)
             self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
-            self._toggle_buttons_qt(enable_save_fix=True)
+            self._update_save_button_state_for_tab_content(self.stacked_widget_results_fixes)
     def toggle_notes_visibility(self, checked):
         """Hiện hoặc ẩn ô Ghi chú dựa vào trạng thái checkbox."""
         self.label_notes_qt.setVisible(checked)
@@ -1213,42 +1297,6 @@ class PcInfoAppQt(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi xuất file: {e}")
             logging.exception("Lỗi không xác định khi xuất file:")
-
-    def save_tab_result_qt(self, stacked_widget_results, default_prefix="KetQua"):
-        current_widget = stacked_widget_results.currentWidget()
-        content_to_save = ""
-
-        if isinstance(current_widget, QGroupBox): # It's the QTextEdit page
-            text_edit = current_widget.findChild(QTextEdit)
-            if text_edit:
-                content_to_save = text_edit.toPlainText().strip()
-        elif isinstance(current_widget, QTableWidget): # It's the QTableWidget page
-            # For now, let user know CSV export is separate or implement simple text dump
-            # QMessageBox.information(self, "Lưu Kết Quả Bảng", "Để lưu dữ liệu bảng, vui lòng sử dụng nút 'Xuất CSV (Bảng)'.")
-            # return
-            # Or, create a simple text representation of the table:
-            table_widget = current_widget
-            content_to_save = self._get_table_content_as_text(table_widget)
-
-        if not content_to_save or "Đang thực hiện:" in content_to_save or "Kết quả của tiện ích sẽ hiển thị ở đây." in content_to_save or "Chọn một tác vụ để thực hiện." in content_to_save :
-            QMessageBox.warning(self, "Không có kết quả", "Không có kết quả để lưu hoặc tác vụ đang chạy.")
-            return
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename_suggestion = f"{default_prefix}_{timestamp}.txt"
-            save_dir_default = os.path.join(os.path.expanduser("~"), "Documents", "PC_Info_Tool_Results")
-            os.makedirs(save_dir_default, exist_ok=True)
-
-            file_path, _ = QFileDialog.getSaveFileName(self, f"Lưu Kết Quả {default_prefix}", os.path.join(save_dir_default, filename_suggestion), "Text Files (*.txt);;All Files (*)")
-
-            if file_path:
-                save_text_to_file(content_to_save, file_path)
-                QMessageBox.information(self, "Lưu Thành Công", f"Kết quả đã được lưu vào:\n{file_path}")
-        except (IOError, RuntimeError) as save_e:
-            QMessageBox.critical(self, "Lỗi Lưu File", f"Không thể lưu file kết quả:\n{save_e}")
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi lưu kết quả: {e}")
-            logging.exception("Lỗi không xác định khi lưu kết quả tab:")
 
     def _get_table_content_as_text(self, table_widget):
         if not table_widget: return ""
@@ -1313,12 +1361,10 @@ class PcInfoAppQt(QMainWindow):
         if text_display_for_loading:
             self._clear_text_highlights(text_display_for_loading)
 
-        is_utility_task = target_stacked_widget == self.stacked_widget_results_utilities
-        is_fix_task = target_stacked_widget == self.stacked_widget_results_fixes
-
-        if is_utility_task: self._toggle_buttons_qt(enable_save_utility=False); self.button_export_csv.setVisible(False)
-        elif is_fix_task: self._toggle_buttons_qt(enable_save_fix=False); self.button_export_csv.setVisible(False)
-
+        current_page_widget = self.pages_stack.currentWidget()
+        if current_page_widget == self.page_utilities or current_page_widget == self.page_fixes:
+            self.button_save_active_tab_result.setEnabled(False)
+            
         # Đảm bảo task_args là một tuple để unpack an toàn
         if task_args is None:
             actual_args_for_thread_tuple = tuple()
@@ -1369,7 +1415,7 @@ class PcInfoAppQt(QMainWindow):
             if isinstance(table_widget_target, QTableWidget):
                 self._populate_table_widget(table_widget_target, data)
                 target_stacked_widget.setCurrentIndex(1) # Switch to table view
-                self.button_export_csv.setVisible(True)
+                # self.button_export_csv.setVisible(True) # Button removed
             else: # Fallback to text if widget at index 1 is not a table
                 result_type = "text" # Force text display
         
@@ -1378,13 +1424,9 @@ class PcInfoAppQt(QMainWindow):
             display_text = self._format_task_result_for_display_generic(data)
             self._update_display_widget(text_edit_target, display_text)
             target_stacked_widget.setCurrentIndex(0) # Switch to text view
-            self.button_export_csv.setVisible(False)
+            # self.button_export_csv.setVisible(False) # Button removed
 
-        is_utility_task = target_stacked_widget == self.stacked_widget_results_utilities
-        is_fix_task = target_stacked_widget == self.stacked_widget_results_fixes
-        if is_utility_task: self._toggle_buttons_qt(enable_save_utility=True)
-        elif is_fix_task: self._toggle_buttons_qt(enable_save_fix=True)
-
+        self._update_save_button_state_for_tab_content(target_stacked_widget)
     def _format_task_result_for_display_generic(self, result_data):
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold."""
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold.
@@ -1514,7 +1556,7 @@ class PcInfoAppQt(QMainWindow):
             event.accept()
         # super().closeEvent(event) # Call super at the end if event is accepted.
 
-    def _on_tab_changed_search_clear(self, index):
+    def _on_navigation_changed(self, index):
         """Clears search inputs and highlights when tab changes."""
         # Clear the global search input text
         self.global_search_input.clear() # Xóa text trước khi ẩn/hiện hoặc reparent
@@ -1522,22 +1564,18 @@ class PcInfoAppQt(QMainWindow):
         # Detach search input from its current parent layout
         # This ensures it can be re-parented correctly.
         # Check if it has a parent and that parent has a layout
-        current_search_parent = self.global_search_input.parentWidget()
-        if current_search_parent and current_search_parent.layout():
-            current_search_parent.layout().removeWidget(self.global_search_input)
-        self.global_search_input.setParent(None) # Quan trọng để reparent đúng cách
-        self.global_search_input.hide() # Ẩn theo mặc định khi chuyển tab
+        # With the new layout, global_search_input is always in search_bar_container.
+        # We just show/hide search_bar_container.
 
-        current_tab_widget = self.notebook.widget(index)
+        self.pages_stack.setCurrentIndex(index) # Ensure stack is synchronized
+        current_page_widget = self.pages_stack.widget(index)
 
-        if current_tab_widget == self.tab_utilities and hasattr(self, 'utilities_results_main_layout'):
-            # Insert search bar before the QStackedWidget in the results column
-            self.utilities_results_main_layout.insertWidget(0, self.global_search_input)
-            self.global_search_input.show()
-        elif current_tab_widget == self.tab_fixes and hasattr(self, 'fixes_results_main_layout'):
-            self.fixes_results_main_layout.insertWidget(0, self.global_search_input)
-            self.global_search_input.show()
-        # Add other tabs if they need the global search bar
+        if current_page_widget == self.page_utilities or current_page_widget == self.page_fixes:
+            self.search_bar_container.setVisible(True)
+        else:
+            self.search_bar_container.setVisible(False)
+
+        # Add other pages if they need the global search bar
 
         # Clear highlights in text display areas
         if hasattr(self, 'stacked_widget_results_utilities'):
@@ -1553,14 +1591,50 @@ class PcInfoAppQt(QMainWindow):
                 # For QLabels, re-setting the HTML content without search term effectively clears highlights
                 # This needs the original content to be stored or re-fetched if search was applied.
                 # For simplicity, we assume search on home tab is not implemented yet or handled differently.
-                pass # Placeholder for home tab card highlight clearing
+                pass # Thụt vào cho khối if
+        self._update_active_save_button_state()
 
-        # Hide/Show CSV export button based on current view in the active tab
-        self.button_export_csv.setVisible(False) # Default to hidden
-        if current_tab_widget == self.tab_utilities and self.stacked_widget_results_utilities.currentIndex() == 1:
-            self.button_export_csv.setVisible(True)
-        elif current_tab_widget == self.tab_fixes and self.stacked_widget_results_fixes.currentIndex() == 1:
-            self.button_export_csv.setVisible(True)
+    def _update_toggle_nav_button_state(self):
+        if self.nav_panel_is_collapsed:
+            if hasattr(self, 'icon_expand_nav') and hasattr(self, 'nav_list_toggle_button_bottom'):
+                self.nav_list_toggle_button_bottom.setIcon(self.icon_expand_nav)
+                self.nav_list_toggle_button_bottom.setText(" ")
+        else:
+            if hasattr(self, 'icon_collapse_nav') and hasattr(self, 'nav_list_toggle_button_bottom'):
+                self.nav_list_toggle_button_bottom.setIcon(self.icon_collapse_nav)
+                self.nav_list_toggle_button_bottom.setText(" Thu gọn")
+
+    def _toggle_nav_panel_visibility(self):
+        self.nav_panel_is_collapsed = not self.nav_panel_is_collapsed
+        
+        current_sizes = self.main_content_splitter.sizes()
+        current_total_width = sum(current_sizes)
+        target_nav_width = 0
+
+        if self.nav_panel_is_collapsed:
+            target_nav_width = self.NAV_COLLAPSED_WIDTH
+            for i in range(self.nav_list_widget.count()):
+                item = self.nav_list_widget.item(i)
+                if item:
+                    # Store original text if not already stored or if it's different
+                    if item.data(Qt.UserRole) is None or item.data(Qt.UserRole) != item.text():
+                         item.setData(Qt.UserRole, item.text())
+                    item.setText("") # Clear text to show only icon for list items
+            if hasattr(self, 'nav_list_toggle_button_bottom'):
+                self.nav_list_toggle_button_bottom.setText("") # Clear text for bottom button, show only icon
+        else:
+            target_nav_width = self.NAV_EXPANDED_WIDTH
+            for i in range(self.nav_list_widget.count()):
+                item = self.nav_list_widget.item(i)
+                if item:
+                    original_text = item.data(Qt.UserRole)
+                    if original_text is not None:
+                        item.setText(original_text) # Restore text
+            # Text for bottom button is set in _update_toggle_nav_button_state
+
+        content_pane_width = current_total_width - target_nav_width
+        self.main_content_splitter.setSizes([target_nav_width, content_pane_width if content_pane_width > 0 else 0])
+        self._update_toggle_nav_button_state()
 
     def _style_save_button(self, button, on_click_action):
         button.setCursor(Qt.PointingHandCursor)
@@ -1568,6 +1642,102 @@ class PcInfoAppQt(QMainWindow):
         button.setEnabled(False) # Initially disabled
         button.setObjectName("SaveResultButton") # For QSS styling
         button.clicked.connect(on_click_action)
+
+    def _can_save_current_tab_content(self, stacked_widget_results):
+        current_widget_on_stack = stacked_widget_results.currentWidget()
+        content_to_check = ""
+
+        if isinstance(current_widget_on_stack, QGroupBox): # QTextEdit page
+            text_edit = current_widget_on_stack.findChild(QTextEdit)
+            if text_edit:
+                content_to_check = text_edit.toPlainText().strip()
+        elif isinstance(current_widget_on_stack, QTableWidget): # QTableWidget page
+            table_widget = current_widget_on_stack
+            if table_widget.rowCount() > 0:
+                content_to_check = "has_table_data" # Chỉ cần một giá trị không rỗng
+
+        if not content_to_check or \
+           "Đang thực hiện:" in content_to_check or \
+           "Kết quả của tiện ích sẽ hiển thị ở đây." in content_to_check or \
+           "Chọn một tác vụ để thực hiện." in content_to_check:
+            return False
+        return True
+
+    def _update_save_button_state_for_tab_content(self, stacked_widget):
+        """Cập nhật trạng thái nút Lưu/Xuất cho tab Tiện ích/Fixes."""
+        current_page_widget = self.pages_stack.currentWidget()
+        if current_page_widget != self.page_utilities and current_page_widget != self.page_fixes:
+            return # Chỉ xử lý cho tab Tiện ích và Fixes
+
+        can_save = self._can_save_current_tab_content(stacked_widget)
+        self.button_save_active_tab_result.setVisible(True) # Luôn hiển thị ở các tab này
+        self.button_save_active_tab_result.setEnabled(can_save)
+
+    def _update_active_save_button_state(self):
+        """Cập nhật text, visibility và enabled state của nút Lưu/Xuất chính."""
+        current_page_widget = self.pages_stack.currentWidget()
+
+        if current_page_widget == self.page_home:
+            self.button_refresh_home_qt.setVisible(True)
+            self.button_save_active_tab_result.setText("Xuất Báo Cáo PC")
+            self.button_save_active_tab_result.setVisible(True)
+            self.button_save_active_tab_result.setEnabled(self.pc_info_dict is not None)
+        elif current_page_widget == self.page_utilities:
+            self.button_refresh_home_qt.setVisible(False)
+            self.button_save_active_tab_result.setText("Lưu Kết Quả Tab")
+            self._update_save_button_state_for_tab_content(self.stacked_widget_results_utilities)
+        elif current_page_widget == self.page_fixes:
+            self.button_refresh_home_qt.setVisible(False)
+            self.button_save_active_tab_result.setText("Lưu Kết Quả Tab")
+            self._update_save_button_state_for_tab_content(self.stacked_widget_results_fixes)
+        elif current_page_widget == self.page_about:
+            self.button_refresh_home_qt.setVisible(False)
+            self.button_save_active_tab_result.setVisible(False)
+        else:
+            self.button_refresh_home_qt.setVisible(False)
+            self.button_save_active_tab_result.setVisible(False)
+
+    def on_save_active_tab_result_qt(self):
+        current_page_widget = self.pages_stack.currentWidget()
+        if current_page_widget == self.page_home: # Corrected condition
+            self.on_export_info_qt()
+        elif current_page_widget == self.page_utilities: # Added condition for utilities tab
+            self._save_generic_tab_result(self.stacked_widget_results_utilities, "KetQua_TienIch")
+        elif current_page_widget == self.page_fixes:
+            self._save_generic_tab_result(self.stacked_widget_results_fixes, "KetQua_SuaLoi")
+        else:
+            QMessageBox.information(self, "Thông báo", "Không có kết quả nào để lưu từ tab hiện tại.")
+    def _save_generic_tab_result(self, stacked_widget_results, default_prefix="KetQua"):
+        current_widget = stacked_widget_results.currentWidget()
+        content_to_save = ""
+
+        if isinstance(current_widget, QGroupBox): # It's the QTextEdit page
+            text_edit = current_widget.findChild(QTextEdit)
+            if text_edit:
+                content_to_save = text_edit.toPlainText().strip()
+        elif isinstance(current_widget, QTableWidget): # It's the QTableWidget page
+            table_widget = current_widget
+            content_to_save = self._get_table_content_as_text(table_widget)
+
+        if not self._can_save_current_tab_content(stacked_widget_results): # Sử dụng hàm kiểm tra chung
+            QMessageBox.warning(self, "Không có kết quả", "Không có kết quả hợp lệ để lưu hoặc tác vụ đang chạy.")
+            return
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename_suggestion = f"{default_prefix}_{timestamp}.txt"
+            save_dir_default = os.path.join(os.path.expanduser("~"), "Documents", "PC_Info_Tool_Results")
+            os.makedirs(save_dir_default, exist_ok=True)
+
+            file_path, _ = QFileDialog.getSaveFileName(self, f"Lưu Kết Quả {default_prefix}", os.path.join(save_dir_default, filename_suggestion), "Text Files (*.txt);;All Files (*)")
+
+            if file_path:
+                save_text_to_file(content_to_save, file_path)
+                QMessageBox.information(self, "Lưu Thành Công", f"Kết quả đã được lưu vào:\n{file_path}")
+        except (IOError, RuntimeError) as save_e:
+            QMessageBox.critical(self, "Lỗi Lưu File", f"Không thể lưu file kết quả:\n{save_e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi lưu kết quả: {e}")
+            logging.exception("Lỗi không xác định khi lưu kết quả tab:")
 
 # Khối main để chạy thử trực tiếp file này (nếu cần)
 # if __name__ == "__main__":
