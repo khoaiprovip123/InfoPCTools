@@ -308,10 +308,12 @@ def get_gpu_details(wmi_service):
 
     details = []
     try:
-        video_controllers = wmi_service.ExecQuery("SELECT Name, AdapterCompatibility, AdapterRAM, CurrentHorizontalResolution, CurrentVerticalResolution FROM Win32_VideoController")
+        # Thêm DriverVersion và DriverDate
+        video_controllers = wmi_service.ExecQuery("SELECT Name, AdapterCompatibility, AdapterRAM, CurrentHorizontalResolution, CurrentVerticalResolution, DriverVersion, DriverDate FROM Win32_VideoController")
         vc_list = list(video_controllers)
         if not vc_list:
              return [{"Thông tin": f"{NOT_FOUND} GPU nào."}]
+        note_added = False
 
         for controller in vc_list:
             name = _get_wmi_property(controller, "Name", NOT_AVAILABLE)
@@ -319,18 +321,36 @@ def get_gpu_details(wmi_service):
             total_memory = _get_wmi_property(controller, "AdapterRAM", default_value=0)
             h_res = _get_wmi_property(controller, "CurrentHorizontalResolution", default_value=None)
             v_res = _get_wmi_property(controller, "CurrentVerticalResolution", default_value=None)
+            driver_version = _get_wmi_property(controller, "DriverVersion", NOT_AVAILABLE)
+            driver_date_wmi = _get_wmi_property(controller, "DriverDate", None) # YYYYMMDDHHMMSS.ffffff+/-UUU
+
+            driver_date_formatted = NOT_AVAILABLE
+            if driver_date_wmi:
+                try:
+                    # Chuyển đổi sang đối tượng datetime rồi định dạng lại
+                    dt_obj = datetime.strptime(driver_date_wmi.split('.')[0], "%Y%m%d%H%M%S")
+                    driver_date_formatted = dt_obj.strftime("%d/%m/%Y")
+                except ValueError:
+                    driver_date_formatted = driver_date_wmi # Để nguyên nếu không parse được
+
 
             # Tính toán bộ nhớ và độ phân giải
             # Use > 0 check for memory conversion
             total_memory_mb = round(total_memory / (1024 ** 2)) if total_memory and total_memory > 0 else NOT_AVAILABLE # Simplified: total_memory is already an int
             resolution = f"{h_res}x{v_res}" if h_res and v_res else NOT_IDENTIFIED
 
-            details.append({
+            gpu_info = {
                 "Tên": name,                      # Key tiếng Việt
                 "Nhà sản xuất": manufacturer,     # Key tiếng Việt
                 "Tổng bộ nhớ (MB)": total_memory_mb, # Key tiếng Việt
-                "Độ phân giải hiện tại": resolution # Key tiếng Việt
-            })
+                "Độ phân giải hiện tại": resolution, # Key tiếng Việt
+                "Phiên bản Driver": driver_version, # Key tiếng Việt
+                "Ngày Driver": driver_date_formatted, # Key tiếng Việt
+            }
+            details.append(gpu_info)
+        # Thêm ghi chú về VRAM và nhiệt độ nếu chưa có
+        if details and not any("Ghi chú" in d for d in details):
+            details.append({"Ghi chú": "Thông tin sử dụng VRAM và nhiệt độ GPU hiện tại thường yêu cầu công cụ chuyên dụng từ nhà sản xuất và không có sẵn qua WMI chuẩn."})
         return details
     except (pywintypes.com_error, Exception) as e:
         logging.error(f"Lỗi khi lấy thông tin GPU: {e}", exc_info=True)
@@ -818,7 +838,9 @@ def get_detailed_system_information():
         system_check_utilities_data["Thời gian hoạt động"] = get_system_uptime()
         system_check_utilities_data["Dung lượng ổ đĩa"] = get_disk_partitions_usage(wmi_service) # Logical partitions
         system_check_utilities_data["Tóm tắt Event Log gần đây"] = get_recent_event_log_summary(wmi_service) # Renamed key for clarity
-        system_check_utilities_data["Nhiệt độ hệ thống"] = get_system_temperatures() # Added system temperatures
+        system_check_utilities_data["Nhiệt độ hệ thống"] = get_system_temperatures(wmi_service) # Pass wmi_service
+        system_check_utilities_data["Tình trạng ổ cứng (S.M.A.R.T.)"] = get_disk_health_status(wmi_service)
+        system_check_utilities_data["Chi tiết Pin (Laptop)"] = get_battery_details(wmi_service)
 
         # --- Đóng gói kết quả ---
         result = {
@@ -1874,6 +1896,238 @@ def flush_dns_cache():
         logging.error(f"Lỗi không xác định khi xóa cache DNS: {e}", exc_info=True)
         return {"status": "error", "message": f"Lỗi không xác định: {e}"}
 
+# --- Hàm kiểm tra (nếu cần) ---
+# Đặt đoạn code này vào file: c:\Users\vankh\Documents\GetInfoPCNew\core\pc_info_functions.py
+# (Thêm vào cuối file, trước dòng "if __name__ == "__main__":" nếu có)
+# import wmi # Đảm bảo wmi đã được import ở đầu file pc_info_functions.py
+# import logging # Đảm bảo logging đã được import
+
+def set_dns_servers(wmi_service, primary_dns, secondary_dns=None):
+    """
+    Đặt máy chủ DNS cho card mạng đang hoạt động.
+    Yêu cầu quyền Administrator.
+    Sử dụng đối tượng wmi_service (SWbemServices) được cung cấp.
+    """
+    if not wmi_service:
+        return {"status": "Lỗi", "message": "Đối tượng WMI service không được cung cấp."}
+    try:
+        # Tìm card mạng đang hoạt động (có IP và Default Gateway)
+        # Query for adapters using SWbemServices
+        adapters_query = wmi_service.ExecQuery("SELECT * FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled=True")
+        adapters = list(adapters_query) # adapters is a list of SWbemObject
+
+        if not adapters:
+            return {"status": "Lỗi", "message": "Không tìm thấy card mạng nào có IP được kích hoạt."}
+
+        active_adapter = None
+        # Ưu tiên card mạng có Default Gateway
+        for adapter_obj in adapters: # adapter_obj is an SWbemObject
+            default_ip_gateway_prop = adapter_obj.Properties_.Item("DefaultIPGateway")
+            if default_ip_gateway_prop.IsArray and default_ip_gateway_prop.Value is not None and len(default_ip_gateway_prop.Value) > 0:
+                active_adapter = adapter_obj
+                logging.info(f"Tìm thấy card mạng hoạt động (có gateway): {adapter_obj.Properties_.Item('Description').Value} [{adapter_obj.Properties_.Item('SettingID').Value}]")
+                break
+
+        # Nếu không có card nào có gateway, thử tìm card đầu tiên có địa chỉ IP
+        if not active_adapter:
+            for adapter_obj in adapters:
+                ip_address_prop = adapter_obj.Properties_.Item("IPAddress")
+                if ip_address_prop.IsArray and ip_address_prop.Value is not None and len(ip_address_prop.Value) > 0:
+                    active_adapter = adapter_obj
+                    logging.info(f"Không có card mạng nào có gateway. Sử dụng card (có IP): {adapter_obj.Properties_.Item('Description').Value} [{adapter_obj.Properties_.Item('SettingID').Value}]")
+                    break
+
+        if not active_adapter:
+             return {"status": "Lỗi", "message": "Không tìm thấy card mạng phù hợp để cấu hình DNS."}
+
+        dns_servers_to_set = [primary_dns.strip()]
+        if secondary_dns and secondary_dns.strip():
+            dns_servers_to_set.append(secondary_dns.strip())
+
+        adapter_description = active_adapter.Properties_.Item('Description').Value
+        logging.info(f"Đang cố gắng đặt DNS cho {adapter_description}: {dns_servers_to_set}")
+
+        # Use ExecMethod_ for a more robust WMI method call
+        method_definition = active_adapter.Methods_.Item("SetDNSServerSearchOrder")
+        in_params_instance = None
+        if method_definition.InParameters:
+            in_params_instance = method_definition.InParameters.SpawnInstance_()
+            in_params_instance.DNSServerSearchOrder = dns_servers_to_set
+        else: # Should not happen for SetDNSServerSearchOrder as it has InParameters
+            return {"status": "Lỗi", "message": "Không tìm thấy định nghĩa tham số đầu vào cho SetDNSServerSearchOrder."}
+
+        out_params_instance = active_adapter.ExecMethod_(method_definition.Name, in_params_instance)
+        result_code = out_params_instance.ReturnValue # The WMI method's return code
+
+        # Kiểm tra mã trả về từ WMI
+        # Tham khảo: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa393295(v=vs.85)
+        if result_code == 0: # Thành công
+            return {"status": "Thành công",
+                    "message": f"Đã đặt DNS thành công cho card mạng '{adapter_description}'.\nDNS chính: {primary_dns}\nDNS phụ: {secondary_dns if secondary_dns and secondary_dns.strip() else 'Không có'}"}
+        elif result_code == 1: # Thành công, cần khởi động lại
+             return {"status": "Thành công (cần khởi động lại)",
+                     "message": f"Đã đặt DNS cho card mạng '{adapter_description}', nhưng cần khởi động lại máy để áp dụng hoàn toàn."}
+        else:
+            # Xử lý các mã lỗi phổ biến khác
+            error_messages = {
+                65: "Truy cập bị từ chối. Cần quyền Administrator.", # Privilege not held
+                70: "Địa chỉ IP không hợp lệ.", # Invalid IP Address
+                # Thêm các mã lỗi khác nếu cần từ tài liệu của Microsoft
+            }
+            msg = error_messages.get(result_code, f"Mã lỗi không xác định: {result_code}")
+            logging.error(f"Lỗi khi đặt DNS cho {adapter_description}. Mã trả về: {result_code} - {msg}")
+            return {"status": "Lỗi", "message": f"Không thể đặt DNS cho card mạng '{adapter_description}'. {msg}"}
+
+    except pywintypes.com_error as e: # Bắt lỗi COM cụ thể
+        logging.exception("Lỗi COM khi cấu hình DNS:")
+        # Thử lấy thông tin lỗi chi tiết hơn từ com_error
+        excepinfo = getattr(e, 'excepinfo', None)
+        error_text = str(e)
+        if excepinfo and excepinfo[2]: # Description
+            error_text = excepinfo[2]
+
+        # Kiểm tra xem có phải lỗi từ chối truy cập không
+        if "WBEM_E_ACCESS_DENIED" in error_text.upper() or "ACCESS IS DENIED" in error_text.upper() or \
+           (hasattr(e, 'hresult') and e.hresult == -2147024891): # 0x80070005 Access Denied
+             return {"status": "Lỗi", "message": "Lỗi WMI/COM: Truy cập bị từ chối. Vui lòng chạy ứng dụng với quyền Administrator."}
+        return {"status": "Lỗi", "message": f"Lỗi WMI/COM: {error_text}"}
+    except Exception as e:
+        logging.exception("Lỗi không xác định khi cấu hình DNS:")
+        return {"status": "Lỗi", "message": f"Lỗi không mong muốn: {str(e)}"}
+
+    # --- Hàm lấy tình trạng ổ cứng (S.M.A.R.T. cơ bản) ---
+def get_disk_health_status(wmi_service):
+    """
+    Lấy trạng thái sức khỏe cơ bản của các ổ đĩa vật lý.
+    Sử dụng Win32_DiskDrive.Status và thử MSStorageDriver_FailurePredictStatus.
+    """
+    if not wmi_service:
+        return [{"Lỗi": ERROR_WMI_CONNECTION, "Chi tiết": "Không thể kiểm tra tình trạng ổ cứng."}]
+
+    disk_health_details = []
+    try:
+        # 1. Lấy thông tin từ Win32_DiskDrive
+        # Thêm PnPDeviceID để khớp với S.M.A.R.T. status
+        disks_w32 = wmi_service.ExecQuery("SELECT DeviceID, Model, Index, Status, Size, PnPDeviceID FROM Win32_DiskDrive")
+        disk_w32_list = list(disks_w32)
+        if not disk_w32_list:
+            return [{"Thông tin": f"{NOT_FOUND} ổ cứng vật lý nào."}]
+
+        for disk_w32 in disk_w32_list:
+            model = _get_wmi_property(disk_w32, "Model")
+            device_id_w32 = _get_wmi_property(disk_w32, "DeviceID")
+            pnp_device_id = _get_wmi_property(disk_w32, "PnPDeviceID", None) # Lấy PnPDeviceID
+            status_w32 = _get_wmi_property(disk_w32, "Status", NOT_IDENTIFIED) # "OK", "Error", "Degraded", etc.
+            disk_index = _get_wmi_property(disk_w32, "Index", -1)
+            size_gb = int(_get_wmi_property(disk_w32, "Size", 0)) // (1024**3)
+
+            # Mặc định tình trạng dự đoán là không có
+            predict_failure = NOT_AVAILABLE
+            reason_code = NOT_AVAILABLE
+
+            # 2. Thử lấy thông tin dự đoán lỗi từ MSStorageDriver_FailurePredictStatus (root\wmi)
+            _local_com_init_smart = False
+            service_root_wmi_smart = None
+            
+            try:
+                try:
+                    win32com.client.pythoncom.CoInitialize()
+                    _local_com_init_smart = True
+                except pywintypes.com_error: pass
+
+                wmi_locator_smart = win32com.client.Dispatch("WbemScripting.SWbemLocator")
+                service_root_wmi_smart = wmi_locator_smart.ConnectServer(".", r"root\wmi")
+
+                if service_root_wmi_smart and pnp_device_id:
+                    try:
+                        # Escape backslashes and percent signs for WQL LIKE
+                        pnp_device_id_escaped = pnp_device_id.replace("\\", "\\\\").replace("%", "[%]")
+                        # Truy vấn S.M.A.R.T. status cho PnPDeviceID cụ thể
+                        query_smart = f"SELECT PredictFailure, Reason FROM MSStorageDriver_FailurePredictStatus WHERE InstanceName LIKE '{pnp_device_id_escaped}%'"
+                        smart_status_items = service_root_wmi_smart.ExecQuery(query_smart)
+                        
+                        matched_smart_item = None
+                        if list(smart_status_items): # Kiểm tra nếu truy vấn trả về kết quả
+                            matched_smart_item = list(smart_status_items)[0] # Lấy mục đầu tiên khớp
+
+                        if matched_smart_item:
+                            is_failing = _get_wmi_property(matched_smart_item, "PredictFailure") # Boolean
+                            if is_failing is True:
+                                predict_failure = "Có thể sắp lỗi"
+                                reason_code = _get_wmi_property(matched_smart_item, "Reason", NOT_AVAILABLE)
+                            elif is_failing is False:
+                                predict_failure = "Không dự đoán lỗi"
+                                # reason_code không áp dụng nếu không dự đoán lỗi
+                        # Nếu không khớp, predict_failure vẫn là NOT_AVAILABLE
+                    except (pywintypes.com_error, Exception) as e_smart_item:
+                        logging.warning(f"Lỗi khi truy vấn MSStorageDriver_FailurePredictStatus cho PnPDeviceID {pnp_device_id}: {e_smart_item}")
+                elif not pnp_device_id:
+                    logging.debug(f"PnPDeviceID không khả dụng cho ổ đĩa {model}, không thể truy vấn S.M.A.R.T. cụ thể.")
+            except (pywintypes.com_error, Exception) as e_smart:
+                logging.warning(f"Không thể truy vấn MSStorageDriver_FailurePredictStatus: {e_smart}")
+            finally:
+                if _local_com_init_smart: win32com.client.pythoncom.CoUninitialize()
+
+            disk_health_details.append({
+                "Model": model, "Kích thước (GB)": size_gb,
+                "DeviceID": device_id_w32, "Trạng thái (Win32)": status_w32,
+                "Dự đoán Lỗi (S.M.A.R.T.)": predict_failure,
+                "Mã lý do (S.M.A.R.T.)": reason_code if predict_failure == "Có thể sắp lỗi" else NOT_AVAILABLE
+            })
+        return disk_health_details
+    except (pywintypes.com_error, Exception) as e:
+        logging.error(f"Lỗi khi lấy tình trạng ổ cứng: {e}", exc_info=True)
+        return [{"Lỗi": f"{ERROR_FETCHING_INFO} tình trạng ổ cứng: {str(e)}"}]
+
+def get_battery_details(wmi_service):
+    """
+    Lấy thông tin chi tiết về pin (cho laptop).
+    """
+    if not wmi_service:
+        return [{"Lỗi": ERROR_WMI_CONNECTION, "Chi tiết": "Không thể kiểm tra thông tin pin."}]
+
+    battery_details_list = []
+    try:
+        batteries = wmi_service.ExecQuery("SELECT * FROM Win32_Battery")
+        battery_list_wmi = list(batteries)
+        if not battery_list_wmi:
+            return [{"Thông tin": "Không tìm thấy pin nào (có thể là PC hoặc không có pin)."}]
+
+        for battery in battery_list_wmi:
+            name = _get_wmi_property(battery, "Name", NOT_IDENTIFIED)
+            status_code = _get_wmi_property(battery, "BatteryStatus") # 1: Discharging, 2: On AC, 3: Fully Charged, etc.
+            estimated_charge = _get_wmi_property(battery, "EstimatedChargeRemaining", NOT_AVAILABLE) # Percentage
+            design_capacity_mwh = _get_wmi_property(battery, "DesignCapacity", 0) # mWh
+            full_charge_capacity_mwh = _get_wmi_property(battery, "FullChargeCapacity", 0) # mWh
+
+            status_text_map = {
+                1: "Đang xả (Discharging)", 2: "Đang sạc (On AC / Charging)", 3: "Sạc đầy (Fully Charged)",
+                4: "Thấp (Low)", 5: "Nghiêm trọng (Critical)", 6: "Đang sạc (Charging)", # Duplicate of 2 for some systems
+                7: "Đang sạc & Cao (Charging and High)", 8: "Đang sạc & Thấp (Charging and Low)",
+                9: "Đang sạc & Nghiêm trọng (Charging and Critical)", 10: "Không xác định (Unknown)",
+                11: "Hỏng một phần (Partially Charged)"
+            }
+            status_text = status_text_map.get(status_code, f"Mã trạng thái: {status_code}")
+
+            health_percent = NOT_AVAILABLE
+            if design_capacity_mwh and full_charge_capacity_mwh and int(design_capacity_mwh) > 0:
+                try:
+                    health_percent = round((int(full_charge_capacity_mwh) / int(design_capacity_mwh)) * 100, 1)
+                except (ValueError, TypeError, ZeroDivisionError):
+                    health_percent = NOT_AVAILABLE
+
+            battery_details_list.append({
+                "Tên Pin": name,
+                "Trạng thái": status_text,
+                "Mức pin ước tính (%)": estimated_charge,
+                "Sức khỏe Pin Ước tính (%)": f"{health_percent}%" if health_percent != NOT_AVAILABLE else NOT_AVAILABLE,
+                "Dung lượng Thiết kế (mWh)": design_capacity_mwh if design_capacity_mwh else NOT_AVAILABLE,
+                "Dung lượng Sạc đầy (mWh)": full_charge_capacity_mwh if full_charge_capacity_mwh else NOT_AVAILABLE,
+            })
+        return battery_details_list
+    except (pywintypes.com_error, Exception) as e:
+        logging.error(f"Lỗi khi lấy thông tin pin: {e}", exc_info=True)
+        return [{"Lỗi": f"{ERROR_FETCHING_INFO} pin: {str(e)}"}]
 # --- Hàm kiểm tra (nếu cần) ---
 if __name__ == "__main__":
     print("Đang thu thập thông tin PC...")

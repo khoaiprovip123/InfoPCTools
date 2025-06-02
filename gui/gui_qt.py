@@ -9,8 +9,8 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QStackedWidget, QListWidget, QListWidgetItem, QSplitter,
-    QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QStackedWidget, QListWidget, QListWidgetItem, QSplitter, QDialog, QFormLayout, QDialogButtonBox,
+    QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QCheckBox
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor, QTextCharFormat, QTextCursor
@@ -21,7 +21,7 @@ import win32com.client # For CoInitialize/CoUninitialize in threads
 # Import các hàm cần thiết từ core
 # Đảm bảo rằng Python có thể tìm thấy các module này.
 # Nếu chạy main.py từ thư mục gốc, sys.path đã được điều chỉnh.
-from core.pc_info_functions import (
+from core.pc_info_functions import ( # type: ignore
     get_detailed_system_information, NOT_AVAILABLE, ERROR_WMI_CONNECTION, NOT_FOUND,
     get_disk_partitions_usage, generate_battery_report, check_windows_activation_status,
     open_resource_monitor, clear_temporary_files, get_recent_event_logs,
@@ -34,6 +34,9 @@ from core.pc_info_functions import (
     # Giả định các hàm này sẽ được tạo trong core.pc_info_functions.py
     lookup_dns_address,      # Ví dụ: lookup_dns_address("google.com")
     get_active_network_connections, # Ví dụ: netstat
+    get_disk_health_status,   # Hàm mới cho tình trạng ổ cứng
+    get_battery_details,      # Hàm mới cho chi tiết pin
+    set_dns_servers,          # Hàm mới để cấu hình DNS
     flush_dns_cache           # Ví dụ: ipconfig /flushdns
 )
 from core.pc_info_manager import (
@@ -47,10 +50,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # --- Constants for UI Styling (Có thể dùng QSS sau) ---
 DEFAULT_FONT_FAMILY = "Roboto"
-DEFAULT_FONT_SIZE = 10 # Decreased font size
 MONOSPACE_FONT_FAMILY = "Consolas"
 MONOSPACE_FONT_SIZE = 9
 HIGHLIGHT_COLOR = QColor(255, 236, 179) # Material Amber A100 (FFECB3) for text search
+H1_FONT_SIZE = 16
+H2_FONT_SIZE = 12
+BODY_FONT_SIZE = 10
+
 
 # New Color Palette (Material Design inspired)
 PRIMARY_COLOR = "#2196F3"  # Xanh dương (Blue)
@@ -163,14 +169,47 @@ class WorkerThread(QThread):
                 self.button_to_manage.setText(self.original_button_text)
                 self.button_to_manage.setEnabled(True)
 
+class SetDnsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Cấu hình DNS")
+        self.setMinimumWidth(350)
+
+        layout = QFormLayout(self)
+
+        self.primary_dns_input = QLineEdit()
+        self.primary_dns_input.setPlaceholderText("8.8.8.8")
+        layout.addRow("DNS Chính:", self.primary_dns_input)
+
+        self.secondary_dns_input = QLineEdit()
+        self.secondary_dns_input.setPlaceholderText("1.1.1.1 (hoặc để trống)")
+        layout.addRow("DNS Phụ:", self.secondary_dns_input)
+
+        self.note_label = QLabel("Lưu ý: Thay đổi DNS yêu cầu quyền Administrator.\nCác DNS phổ biến: Google (8.8.8.8, 8.8.4.4), Cloudflare (1.1.1.1, 1.0.0.1)")
+        self.note_label.setWordWrap(True)
+        layout.addRow(self.note_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def get_dns_values(self):
+        primary = self.primary_dns_input.text().strip()
+        secondary = self.secondary_dns_input.text().strip()
+        if not primary: # Nếu DNS chính trống, sử dụng placeholder
+            primary = self.primary_dns_input.placeholderText()
+        return primary, secondary if secondary else None # Trả về None nếu secondary trống
+
 class PcInfoAppQt(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Thông Tin Cấu Hình PC")
         self.setGeometry(100, 100, 950, 800) # Tăng kích thước một chút
 
-        self.default_font = QFont(DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE)
-        self.bold_font = QFont(DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, QFont.Bold)
+        self.h1_font = QFont(DEFAULT_FONT_FAMILY, H1_FONT_SIZE, QFont.Bold)
+        self.h2_font = QFont(DEFAULT_FONT_FAMILY, H2_FONT_SIZE, QFont.Bold)
+        self.body_font = QFont(DEFAULT_FONT_FAMILY, BODY_FONT_SIZE)
         self.monospace_font = QFont(MONOSPACE_FONT_FAMILY, MONOSPACE_FONT_SIZE)
 
         # --- State Variables ---
@@ -235,10 +274,9 @@ class PcInfoAppQt(QMainWindow):
         except Exception as e:
             logging.warning(f"Không thể tải icon cho nút thu/gọn thanh điều hướng: {e}")
 
-        font_title = QFont(DEFAULT_FONT_FAMILY, 16, QFont.Bold)
         
         self.greeting_label = QLabel("Chào bạn!") # Default greeting
-        self.greeting_label.setFont(font_title) # Sử dụng font của tiêu đề cũ
+        self.greeting_label.setFont(self.h1_font) # Sử dụng font của tiêu đề cũ
         self.greeting_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
         top_header_layout.addWidget(self.greeting_label)
         top_header_layout.addStretch(1)
@@ -261,7 +299,7 @@ class PcInfoAppQt(QMainWindow):
         left_nav_panel_layout.setSpacing(0) # No spacing between list and button
 
         self.nav_list_widget = QListWidget()
-        self.nav_list_widget.setFont(self.bold_font) # Bolder font for nav items
+        self.nav_list_widget.setFont(self.h2_font) # Use H2 font for nav items
         # self.nav_list_widget.setFixedWidth(self.NAV_EXPANDED_WIDTH) # Width will be controlled by splitter
         self.nav_list_widget.setObjectName("NavList")
         left_nav_panel_layout.addWidget(self.nav_list_widget, 1) # List takes available space
@@ -273,7 +311,7 @@ class PcInfoAppQt(QMainWindow):
         self.nav_list_toggle_button_bottom.clicked.connect(self._toggle_nav_panel_visibility)
         self.nav_list_toggle_button_bottom.setFixedHeight(35) # Set a fixed height
         # Icon and text will be set in _update_toggle_nav_button_state
-        left_nav_panel_layout.addWidget(self.nav_list_toggle_button_bottom)
+        # left_nav_panel_layout.addWidget(self.nav_list_toggle_button_bottom) # MOVED to global_buttons_layout
 
         self.main_content_splitter.addWidget(left_nav_panel_widget)
 
@@ -288,7 +326,7 @@ class PcInfoAppQt(QMainWindow):
         search_bar_layout = QHBoxLayout(self.search_bar_container)
         search_bar_layout.setContentsMargins(5,0,5,0) # Small margins for search bar
         self.global_search_input = QLineEdit()
-        self.global_search_input.setFont(self.default_font)
+        self.global_search_input.setFont(self.body_font)
         self.global_search_input.setPlaceholderText("Tìm kiếm trong tab...")
         self.global_search_input.textChanged.connect(lambda: self.global_search_timer.start(300))
         search_bar_layout.addWidget(self.global_search_input)
@@ -306,18 +344,21 @@ class PcInfoAppQt(QMainWindow):
         global_buttons_frame = QFrame()
         global_buttons_layout = QHBoxLayout(global_buttons_frame)
         global_buttons_layout.setContentsMargins(10, 5, 10, 5) # Thêm margins cho global buttons
+
+        # Add the navigation toggle button to the far left of the global buttons frame
+        global_buttons_layout.addWidget(self.nav_list_toggle_button_bottom)
         global_buttons_layout.addStretch(1) # Stretch sẽ đẩy các nút sau nó sang phải
 
         # --- Nút Làm mới Dữ liệu PC (sẽ được hiển thị/ẩn tùy theo tab) ---
         self.button_refresh_home_qt = QPushButton("Làm mới Dữ liệu PC")
-        self.button_refresh_home_qt.setFont(self.default_font)
+        self.button_refresh_home_qt.setFont(self.body_font)
         self.button_refresh_home_qt.setCursor(Qt.PointingHandCursor)
         self.button_refresh_home_qt.clicked.connect(self.fetch_pc_info_threaded)
         self.button_refresh_home_qt.setVisible(False) # Ban đầu ẩn
         global_buttons_layout.addWidget(self.button_refresh_home_qt)
 
         self.button_save_active_tab_result = QPushButton("Lưu Kết Quả Tab")
-        self.button_save_active_tab_result.setFont(self.default_font)
+        self.button_save_active_tab_result.setFont(self.body_font)
         self.button_save_active_tab_result.setFixedWidth(180) # Điều chỉnh độ rộng nếu cần
         self.button_save_active_tab_result.setCursor(Qt.PointingHandCursor)
         self.button_save_active_tab_result.clicked.connect(self.on_save_active_tab_result_qt)
@@ -356,7 +397,7 @@ class PcInfoAppQt(QMainWindow):
         # global_buttons_layout.addStretch(1) # Removed to keep export buttons together
 
         self.button_exit = QPushButton("Thoát")
-        self.button_exit.setFont(self.default_font)
+        self.button_exit.setFont(self.body_font)
         self.button_exit.setFixedWidth(150)
         self.button_exit.setCursor(Qt.PointingHandCursor)
         self.button_exit.clicked.connect(self.close)
@@ -391,8 +432,8 @@ class PcInfoAppQt(QMainWindow):
         layout.setSpacing(15)
 
         # --- User Info Frame (QGroupBox) ---
-        group_user_info = QGroupBox("Thông tin người dùng (cho báo cáo)")
-        group_user_info.setFont(self.bold_font)
+        group_user_info = QGroupBox("Thông tin người dùng")
+        group_user_info.setFont(self.h2_font) # Sử dụng font tiêu đề H2
         layout.addWidget(group_user_info)
         user_info_grid_layout = QGridLayout(group_user_info) # Đổi tên để rõ ràng hơn
         group_user_info.setObjectName("UserInfoGroup")
@@ -400,47 +441,47 @@ class PcInfoAppQt(QMainWindow):
         # Dòng 1: Tên và Phòng Ban
         user_info_grid_layout.addWidget(QLabel("Tên:"), 0, 0)
         self.entry_name_qt = QLineEdit()
-        self.entry_name_qt.setFont(self.default_font)
+        self.entry_name_qt.setFont(self.body_font) # Sử dụng font mặc định
         user_info_grid_layout.addWidget(self.entry_name_qt, 0, 1)
 
         user_info_grid_layout.addWidget(QLabel("Phòng Ban:"), 0, 2)
         self.entry_department_qt = QLineEdit()
-        self.entry_department_qt.setFont(self.default_font)
+        self.entry_department_qt.setFont(self.body_font)
         user_info_grid_layout.addWidget(self.entry_department_qt, 0, 3) # Phòng ban ở cột 3
 
         # Dòng 1: Vị Trí Tầng (cột 0, 1) và ô nhập tầng tùy chỉnh (cột 2, 3 - sẽ được quản lý bởi on_floor_change_qt)
         # Đảm bảo label "Nhập vị trí hiện tại" dùng font mặc định
         user_info_grid_layout.addWidget(QLabel("Vị Trí:"), 1, 0) # Đổi tên label
         self.combo_floor_qt = QComboBox()
-        self.combo_floor_qt.setFont(self.default_font)
+        self.combo_floor_qt.setFont(self.body_font)
         self.combo_floor_qt.addItems(["Tầng G", "Lầu 1", "Lầu 2", "Khác"])
         self.combo_floor_qt.currentIndexChanged.connect(self.on_floor_change_qt)
         user_info_grid_layout.addWidget(self.combo_floor_qt, 1, 1) # ComboBox ở cột 1
 
         self.entry_custom_floor_label_qt = QLabel("Vị trí khác:") # Đổi text 
-        self.entry_custom_floor_label_qt.setFont(self.bold_font) # Đổi sang font in đậm
+        self.entry_custom_floor_label_qt.setFont(self.h2_font) # Đổi sang font in đậm
         self.entry_custom_floor_qt = QLineEdit()
-        self.entry_custom_floor_qt.setFont(self.default_font)
+        self.entry_custom_floor_qt.setFont(self.body_font)
         # Sẽ được thêm/xóa bởi on_floor_change_qt, không thêm vào layout cố định ở đây
         self.on_floor_change_qt() # Initial state
 
         # Dòng 2: Chức Vụ (cột 0,1) và Checkbox Ghi chú (cột 2)
         user_info_grid_layout.addWidget(QLabel("Chức Vụ:"), 2, 0) # Chức Vụ ở dòng 2, cột 0
         self.entry_position_qt = QLineEdit()
-        self.entry_position_qt.setFont(self.default_font)
+        self.entry_position_qt.setFont(self.body_font)
         user_info_grid_layout.addWidget(self.entry_position_qt, 2, 1) # Ô nhập Chức Vụ ở dòng 2, cột 1 (không kéo dài)
 
         self.checkbox_show_notes = QCheckBox("Thêm ghi chú")
-        self.checkbox_show_notes.setFont(self.default_font)
+        self.checkbox_show_notes.setFont(self.body_font)
         self.checkbox_show_notes.toggled.connect(self.toggle_notes_visibility)
         user_info_grid_layout.addWidget(self.checkbox_show_notes, 2, 2, 1, 2) # Checkbox ở dòng 2, cột 2, kéo dài 2 cột còn lại
 
 
         # Dòng 3: Ghi chú (ẩn/hiện) - đã được dời xuống
         self.label_notes_qt = QLabel("Ghi chú:")
-        self.label_notes_qt.setFont(self.default_font)
+        self.label_notes_qt.setFont(self.body_font)
         self.text_notes_qt = QTextEdit()
-        self.text_notes_qt.setFont(self.default_font)
+        self.text_notes_qt.setFont(self.body_font)
         self.text_notes_qt.setFixedHeight(60) # Giới hạn chiều cao
         user_info_grid_layout.addWidget(self.label_notes_qt, 3, 0, Qt.AlignTop) # Label Ghi chú ở dòng 3, cột 0
         user_info_grid_layout.addWidget(self.text_notes_qt, 3, 1, 1, 3) # Ô nhập Ghi chú ở dòng 3, cột 1, kéo dài 3 cột
@@ -469,14 +510,19 @@ class PcInfoAppQt(QMainWindow):
         self.card_disks_info = self._create_info_card("Ổ Đĩa") # For multiple disks
         self.card_gpus_info = self._create_info_card("Card Đồ Họa (GPU)") # For multiple GPUs
         self.card_screens_info = self._create_info_card("Màn Hình") # For multiple screens
+        self.card_disk_health_info = self._create_info_card("Tình Trạng Ổ Cứng (S.M.A.R.T)")
+        self.card_battery_info = self._create_info_card("Thông Tin Pin (Laptop)")
+
 
         self.home_cards_layout.addWidget(self.card_general_info, 0, 0)
         self.home_cards_layout.addWidget(self.card_os_info, 0, 1)
         self.home_cards_layout.addWidget(self.card_cpu_info, 1, 0)
         self.home_cards_layout.addWidget(self.card_ram_info, 1, 1)
         self.home_cards_layout.addWidget(self.card_mainboard_info, 2, 0)
-        self.home_cards_layout.addWidget(self.card_disks_info, 3, 0, 1, 2) # Span 2 columns for disks
-        self.home_cards_layout.addWidget(self.card_gpus_info, 4, 0, 1, 2)   # Span 2 columns for GPUs
+        self.home_cards_layout.addWidget(self.card_disk_health_info, 2, 1) # Disk health next to mainboard
+        self.home_cards_layout.addWidget(self.card_disks_info, 3, 0)    # Physical disks
+        self.home_cards_layout.addWidget(self.card_battery_info, 3, 1)  # Battery info
+        self.home_cards_layout.addWidget(self.card_gpus_info, 4, 0, 1, 2) # Span 2 columns for GPUs
         self.home_cards_layout.addWidget(self.card_screens_info, 5, 0, 1, 2) # Span 2 columns for Screens
 
         cards_scroll_area.setWidget(cards_container_widget)
@@ -484,7 +530,7 @@ class PcInfoAppQt(QMainWindow):
 
     def _create_info_card(self, title):
         card = QGroupBox(title)
-        card.setFont(self.bold_font)
+        card.setFont(self.h2_font)
         card.setObjectName("InfoCard")
         card_layout = QVBoxLayout(card)
         card_layout.setAlignment(Qt.AlignTop)
@@ -542,7 +588,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Group: Bảo mật & Virus
         group_security = QGroupBox("Bảo mật & Virus")
-        group_security.setFont(self.bold_font)
+        group_security.setFont(self.h2_font)
         sec_layout = QVBoxLayout(group_security)
         self._add_utility_button(sec_layout, "Quét Virus Nhanh", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_windows_defender_scan, "utility_defender_quick_scan", needs_wmi=False, task_args=["QuickScan"]))
         self._add_utility_button(sec_layout, "Quét Virus Toàn Bộ", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_windows_defender_scan, "utility_defender_full_scan", needs_wmi=False, task_args=["FullScan"]))
@@ -554,7 +600,7 @@ class PcInfoAppQt(QMainWindow):
         
         # Group: Thông tin & Chẩn đoán
         group_diag = QGroupBox("Thông tin & Chẩn đoán")
-        group_diag.setFont(self.bold_font)
+        group_diag.setFont(self.h2_font)
         diag_layout = QVBoxLayout(group_diag)
         self._add_utility_button(diag_layout, "Xem Dung Lượng Ổ Đĩa", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_disk_partitions_usage, "utility_disk_usage", needs_wmi=True, result_type="table"))
         self._add_utility_button(diag_layout, "Tạo Báo Cáo Pin (Laptop)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, generate_battery_report, "utility_battery_report", needs_wmi=False))
@@ -566,13 +612,14 @@ class PcInfoAppQt(QMainWindow):
         
         # Group: Mạng
         group_network = QGroupBox("Mạng")
-        group_network.setFont(self.bold_font)
+        group_network.setFont(self.h2_font)
         net_layout = QVBoxLayout(group_network)
         self._add_utility_button(net_layout, "Kiểm Tra Kết Nối Wifi", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_wifi_connection_info, "utility_wifi_info", needs_wmi=False))
         self._add_utility_button(net_layout, "Xem Cấu Hình Mạng Chi Tiết", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_network_configuration_details, "utility_network_config", needs_wmi=True, result_type="table"))
         self._add_utility_button(net_layout, "Ping Google", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_ping_test, "utility_ping_google", needs_wmi=False, task_args=["google.com", 4]))
-        self._add_utility_button(net_layout, "Tra Cứu DNS Google", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, lookup_dns_address, "utility_dns_lookup", needs_wmi=False, task_args=["google.com"]))
+        self._add_utility_button(net_layout, "Phân giải IP tên miền", self.run_domain_ip_resolution_qt)
         self._add_utility_button(net_layout, "Kết Nối Mạng Đang Hoạt Động", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_active_network_connections, "utility_active_connections", needs_wmi=False, result_type="table"))
+        self._add_utility_button(net_layout, "Cấu hình DNS", self.run_set_dns_config_qt)
         self._add_utility_button(net_layout, "Xóa Cache DNS", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, flush_dns_cache, "utility_flush_dns", needs_wmi=False))
         self.utilities_actions_layout.addWidget(group_network)
         
@@ -594,7 +641,7 @@ class PcInfoAppQt(QMainWindow):
         
         # Page 0: QTextEdit for general results
         results_group = QGroupBox("Kết quả Tiện ích")
-        results_group.setFont(self.bold_font)
+        results_group.setFont(self.body_font)
         results_layout_inner = QVBoxLayout(results_group)
         self.text_utilities_results_qt = QTextEdit()
         self.text_utilities_results_qt.setReadOnly(True)
@@ -607,7 +654,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Page 1: QTableWidget for table results
         self.table_utilities_results_qt = QTableWidget()
-        self.table_utilities_results_qt.setFont(self.default_font)
+        self.table_utilities_results_qt.setFont(self.body_font)
         self.table_utilities_results_qt.setAlternatingRowColors(True)
         self.table_utilities_results_qt.setSortingEnabled(True)
         self.table_utilities_results_qt.horizontalHeader().setStretchLastSection(True)
@@ -634,7 +681,7 @@ class PcInfoAppQt(QMainWindow):
             button.setObjectName(object_name) # Use provided object_name for specific styling
         else:
             button.setObjectName("UtilityButton") # Default object_name for general utility button styling
-        button.setFont(self.default_font)
+        button.setFont(self.body_font)
         button.setCursor(Qt.PointingHandCursor)
         button.clicked.connect(lambda checked=False, btn=button: on_click_action(btn)) # Pass button to action
         layout.addWidget(button)
@@ -661,7 +708,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Group 1: Tối ưu & Dọn dẹp Hệ thống
         group_optimize_cleanup = QGroupBox("Tối ưu & Dọn dẹp Hệ thống")
-        group_optimize_cleanup.setFont(self.bold_font)
+        group_optimize_cleanup.setFont(self.h2_font)
         optimize_cleanup_layout = QVBoxLayout(group_optimize_cleanup)
         self._add_utility_button(optimize_cleanup_layout, "Xóa File Tạm & Dọn Dẹp", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, clear_temporary_files, "fix_clear_temp", needs_wmi=False))
         self._add_utility_button(optimize_cleanup_layout, "Mở Resource Monitor", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, open_resource_monitor, "fix_resmon", needs_wmi=False))
@@ -670,7 +717,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Group 2: Sửa lỗi & Cập nhật Hệ thống
         group_fix_update = QGroupBox("Sửa lỗi & Cập nhật Hệ thống")
-        group_fix_update.setFont(self.bold_font)
+        group_fix_update.setFont(self.h2_font)
         fix_update_layout = QVBoxLayout(group_fix_update)
         self._add_utility_button(fix_update_layout, "Reset Kết Nối Internet", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, reset_internet_connection, "fix_reset_net", needs_wmi=False))
         self._add_utility_button(fix_update_layout, "Chạy SFC Scan", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, run_sfc_scan, "fix_sfc_scan", needs_wmi=False))
@@ -693,7 +740,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Page 0 for Fixes Tab: QTextEdit
         results_group = QGroupBox("Kết quả Tác vụ Sửa lỗi")
-        results_group.setFont(self.bold_font)
+        results_group.setFont(self.h2_font)
         results_layout_inner = QVBoxLayout(results_group)
         self.text_fixes_results_qt = QTextEdit()
         self.text_fixes_results_qt.setReadOnly(True)
@@ -706,7 +753,7 @@ class PcInfoAppQt(QMainWindow):
 
         # Page 1 for Fixes Tab: QTableWidget
         self.table_fixes_results_qt = QTableWidget()
-        self.table_fixes_results_qt.setFont(self.default_font)
+        self.table_fixes_results_qt.setFont(self.body_font)
         self.table_fixes_results_qt.setAlternatingRowColors(True)
         self.table_fixes_results_qt.setSortingEnabled(True)
         self.table_fixes_results_qt.horizontalHeader().setStretchLastSection(True)
@@ -762,15 +809,15 @@ class PcInfoAppQt(QMainWindow):
 
         # --- Tiêu đề ứng dụng ---
         title_label = QLabel("Công Cụ Hỗ Trợ PC")
-        title_font = QFont(DEFAULT_FONT_FAMILY, 18, QFont.Bold)
-        title_label.setFont(title_font)
+        title_label.setFont(self.h1_font) # Use H1 font
+
         title_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
         title_label.setAlignment(Qt.AlignCenter)
         scroll_layout.addWidget(title_label)
 
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Phiên bản:", "1.0.0 (Qt)"))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Phiên bản:", "V.2.0"))
         scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Người sáng lập:", "HPC"))
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Liên hệ:", "support@hpc.vn"))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Liên hệ:", "vankhoai690@gmail.com"))
         scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Giấy phép:", "Phần mềm nội bộ"))
 
         readme_text = """**README:**
@@ -787,11 +834,11 @@ class PcInfoAppQt(QMainWindow):
 
     def _create_info_section_qt(self, parent, title_text, content_text, is_html=False):
         section_group = QGroupBox(title_text)
-        section_group.setFont(self.bold_font)
+        section_group.setFont(self.h2_font)
         section_layout = QVBoxLayout(section_group)
 
         content_label = QLabel()
-        content_label.setFont(self.default_font)
+        content_label.setFont(self.body_font)
         content_label.setWordWrap(True)
         content_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard) # Cho phép copy
         if is_html:
@@ -815,11 +862,11 @@ class PcInfoAppQt(QMainWindow):
             QMainWindow {{
                 background-color: {WINDOW_BG};
                 font-family: "{DEFAULT_FONT_FAMILY}"; /* Default font for the whole window */
-                font-size: {DEFAULT_FONT_SIZE}pt;
+                font-size: {BODY_FONT_SIZE}pt; /* Base font size for the application */
             }}
             QWidget {{ /* Apply default font to all child widgets */
                 font-family: "{DEFAULT_FONT_FAMILY}";
-                font-size: {DEFAULT_FONT_SIZE}pt;
+                font-size: {BODY_FONT_SIZE}pt;
                 color: {TEXT_COLOR_PRIMARY};
             }}
             QGroupBox {{
@@ -837,7 +884,8 @@ class PcInfoAppQt(QMainWindow):
                 background-color: {WINDOW_BG}; /* Title background same as window */
                 border-radius: 4px;
                 color: {ACCENT_COLOR}; /* Color for groupbox title */
-                /* font-weight: bold; -- Will be set by self.bold_font in Python for specific QGroupBox titles */
+                /* font-family, font-size, font-weight for GroupBox titles are set by self.h2_font in Python */
+                /* e.g., group_user_info.setFont(self.h2_font) */
             }}
             QLabel {{
                 padding: 3px;
@@ -980,7 +1028,7 @@ class PcInfoAppQt(QMainWindow):
             }}
             QTableWidget#ResultTableWidget {{
                 font-family: "{DEFAULT_FONT_FAMILY}";
-                font-size: {DEFAULT_FONT_SIZE-1}pt; /* Slightly smaller for table data */
+                font-size: {BODY_FONT_SIZE-1}pt; /* Slightly smaller for table data */
                 alternate-background-color: #F5F5F5; /* Light grey for alternate rows */
                 gridline-color: {BORDER_COLOR_LIGHT};
                 border: 1px solid {BORDER_COLOR_LIGHT};
@@ -1155,7 +1203,8 @@ class PcInfoAppQt(QMainWindow):
         card_widgets = [
             self.card_general_info, self.card_os_info, self.card_cpu_info,
             self.card_ram_info, self.card_mainboard_info, self.card_disks_info,
-            self.card_gpus_info, self.card_screens_info
+            self.card_gpus_info, self.card_screens_info,
+            self.card_disk_health_info, self.card_battery_info # Thêm card mới
         ]
         for card in card_widgets:
             content_label = card.findChild(QLabel)
@@ -1211,9 +1260,20 @@ class PcInfoAppQt(QMainWindow):
             
             # For lists like disks, gpus, screens
             disk_keys_map = [("Kiểu máy", "Model"), ("Dung lượng (GB)", "Size"), ("Giao tiếp", "Interface"), ("Loại phương tiện", "Type")]
-            self._populate_card(self.card_disks_info, pc_data.get("Ổ đĩa", []), disk_keys_map)
-            gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Res")]
+            self._populate_card(self.card_disks_info, pc_data.get("Ổ đĩa", [{"Thông tin": NOT_FOUND}]), disk_keys_map)
+
+            gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Res"), ("Phiên bản Driver", "Driver Ver"), ("Ngày Driver", "Driver Date")]
+            # Lấy cả ghi chú nếu có
+            raw_gpu_data = pc_data.get("Card đồ họa (GPU)", [{"Thông tin": NOT_FOUND}])
+            gpu_data_to_display = [gpu for gpu in raw_gpu_data if "Ghi chú" not in gpu]
+            gpu_note = next((gpu.get("Ghi chú") for gpu in raw_gpu_data if "Ghi chú" in gpu), None)
+            if not gpu_data_to_display and raw_gpu_data and "Lỗi" not in raw_gpu_data[0] and "Thông tin" not in raw_gpu_data[0] and not gpu_note : # Nếu chỉ có ghi chú, không hiển thị là "Not Found"
+                 gpu_data_to_display = [{"Thông tin": NOT_FOUND}] # Đảm bảo hiển thị gì đó nếu chỉ có note
             self._populate_card(self.card_gpus_info, pc_data.get("Card đồ họa (GPU)", []), gpu_keys_map)
+            if gpu_note: # Thêm ghi chú vào cuối card GPU nếu có
+                gpu_card_label = self.card_gpus_info.findChild(QLabel)
+                if gpu_card_label: gpu_card_label.setText(gpu_card_label.text() + f"<br><br><i><b>Ghi chú:</b> {html.escape(gpu_note)}</i>")
+
             screen_keys_map = [("Tên", "Tên"), ("Độ phân giải", "Res"), ("Trạng thái", "Status")]
             self._populate_card(self.card_screens_info, screen_data, screen_keys_map)
             
@@ -1224,6 +1284,15 @@ class PcInfoAppQt(QMainWindow):
             self.greeting_label.setText(f"Chào bạn, {user_name}!")
             
             # Kích hoạt nút "Xuất Báo Cáo PC" nếu đang ở tab Trang Chủ
+            # Populate new cards from SystemCheckUtilities
+            system_checks = self.pc_info_dict.get("SystemCheckUtilities", {})
+            disk_health_keys_map = [("Model", "Model"), ("Kích thước (GB)", "Size"), ("DeviceID", "DeviceID"), ("Trạng thái (Win32)", "Status"), ("Dự đoán Lỗi (S.M.A.R.T.)", "Predict Fail"), ("Mã lý do (S.M.A.R.T.)", "Reason")]
+            self._populate_card(self.card_disk_health_info, system_checks.get("Tình trạng ổ cứng (S.M.A.R.T.)", [{"Thông tin": NOT_FOUND}]), disk_health_keys_map)
+
+            battery_keys_map = [("Tên Pin", "Tên"), ("Trạng thái", "Status"), ("Mức pin ước tính (%)", "Charge %"), ("Sức khỏe Pin Ước tính (%)", "Health %"), ("Dung lượng Thiết kế (mWh)", "Design Cap."), ("Dung lượng Sạc đầy (mWh)", "Full Cap.")]
+            self._populate_card(self.card_battery_info, system_checks.get("Chi tiết Pin (Laptop)", [{"Thông tin": NOT_FOUND}]), battery_keys_map)
+
+
             if self.pages_stack.currentWidget() == self.page_home:
                 self.button_save_active_tab_result.setEnabled(True)
     def _on_task_error(self, task_name, error_message):
@@ -1235,7 +1304,12 @@ class PcInfoAppQt(QMainWindow):
         if is_fetch_pc_info:
             self.pc_info_dict = None
             error_text_for_cards = f"Lỗi: {error_message}"
-            card_widgets = [self.card_general_info, self.card_os_info, self.card_cpu_info, self.card_ram_info, self.card_mainboard_info, self.card_disks_info, self.card_gpus_info, self.card_screens_info]
+            card_widgets = [
+                self.card_general_info, self.card_os_info, self.card_cpu_info, 
+                self.card_ram_info, self.card_mainboard_info, self.card_disks_info, 
+                self.card_gpus_info, self.card_screens_info,
+                self.card_disk_health_info, self.card_battery_info # Thêm card mới
+            ]
             for card in card_widgets:
                 content_label = card.findChild(QLabel)
                 if content_label:
@@ -1483,35 +1557,39 @@ class PcInfoAppQt(QMainWindow):
                 
                 if "details" in result_data and not is_value_unavailable(result_data['details']):
                     details_content = result_data['details']
-                    details_html_parts = ["<br><b>Chi tiết:</b>"] # Start with a line break if there are previous lines
-                    has_details_to_show = False
+                    # Accumulator for the actual content of the details section
+                    temp_details_accumulator = []
+                    has_any_detail_content = False
+
                     if isinstance(details_content, dict):
                         for k_detail, v_detail_raw in details_content.items():
                             if not is_value_unavailable(v_detail_raw):
-                                has_details_to_show = True
+                                has_any_detail_content = True
                                 if k_detail == 'errors_list' and isinstance(v_detail_raw, list) and v_detail_raw:
-                                    details_html_parts.append(f"  <b>Lỗi chi tiết:</b>")
+                                    temp_details_accumulator.append(f"  <b>Lỗi chi tiết:</b>")
                                     errors_shown_count = 0
                                     for err_item in v_detail_raw:
                                         if not is_value_unavailable(err_item) and errors_shown_count < 5:
-                                            details_html_parts.append(f"    - {html.escape(str(err_item))}")
+                                            temp_details_accumulator.append(f"    - {html.escape(str(err_item))}")
                                             errors_shown_count += 1
                                     if sum(1 for e_item in v_detail_raw if not is_value_unavailable(e_item)) > 5:
-                                        details_html_parts.append("    ...")
+                                        temp_details_accumulator.append("    ...")
                                 elif k_detail in ['deleted_files_count', 'deleted_folders_count', 'total_size_freed_mb']:
-                                    details_html_parts.append(f"  <b>{html.escape(str(k_detail.replace('_', ' ').capitalize()))}:</b> {html.escape(str(v_detail_raw))}")
+                                    temp_details_accumulator.append(f"  <b>{html.escape(str(k_detail.replace('_', ' ').capitalize()))}:</b> {html.escape(str(v_detail_raw))}")
                                 else:
-                                    details_html_parts.append(f"  <b>{html.escape(str(k_detail))}:</b> {html.escape(str(v_detail_raw))}")
-                        if has_details_to_show: html_lines.append("<br>".join(details_html_parts))
+                                    temp_details_accumulator.append(f"  <b>{html.escape(str(k_detail))}:</b> {html.escape(str(v_detail_raw))}")
                     elif isinstance(details_content, list): # if details is a list of strings
-                        list_details_to_show = [f"  {d_item}" for d_item in details_content if not is_value_unavailable(d_item)]
-                        if list_details_to_show:
-                            details_str_list.extend(list_details_to_show)
-                            lines.append("\n".join(details_str_list))
+                        processed_list_items = [f"  - {html.escape(str(d_item))}" for d_item in details_content if not is_value_unavailable(d_item)]
+                        if processed_list_items:
+                            temp_details_accumulator.extend(processed_list_items)
+                            has_any_detail_content = True
                     else: # Generic details string
-                        details_str_list.append(f"  {details_content}")
-                        html_lines.append("<br>".join(details_html_parts)) # Corrected variable
-                
+                        if not is_value_unavailable(details_content):
+                            temp_details_accumulator.append(f"  {html.escape(str(details_content))}")
+                            has_any_detail_content = True
+                    if has_any_detail_content:
+                        html_lines.append("<br><b>Chi tiết:</b>") # Add the "Chi tiết:" header
+                        html_lines.append("<br>".join(temp_details_accumulator)) # Add the collected detail items
                 if "path" in result_data and not is_value_unavailable(result_data['path']):
                     html_lines.append(f"<br><b>Đường dẫn file:</b> {html.escape(str(result_data['path']))}")
                 if not html_lines: return html.escape(NOT_AVAILABLE)
@@ -1534,6 +1612,34 @@ class PcInfoAppQt(QMainWindow):
     def disable_firewall_qt(self):
         if QMessageBox.question(self, "XÁC NHẬN TẮT TƯỜNG LỬA", "CẢNH BÁO: Tắt tường lửa có thể khiến máy tính của bạn dễ bị tấn công.\nBạn có chắc chắn muốn TẮT Windows Firewall cho tất cả các profile không?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
             self._run_task_in_thread_qt(self.sender(), self.stacked_widget_results_utilities, toggle_firewall, "utility_firewall_disable", needs_wmi=False, task_args=[False])
+
+    def run_domain_ip_resolution_qt(self, button_clicked):
+        """Mở hộp thoại yêu cầu người dùng nhập tên miền, sau đó chạy tra cứu DNS."""
+        domain_name, ok = QInputDialog.getText(self, "Phân giải IP tên miền", "Nhập tên miền (ví dụ: google.com):")
+        
+        if ok and domain_name.strip():
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_utilities, 
+                                        lookup_dns_address, "utility_resolve_domain_ip", 
+                                        needs_wmi=False, task_args=[domain_name.strip()])
+        elif ok: # Người dùng nhấn OK nhưng không nhập gì
+            QMessageBox.warning(self, "Đầu vào trống", "Bạn chưa nhập tên miền.")
+
+    def run_set_dns_config_qt(self, button_clicked):
+        """Mở hộp thoại cấu hình DNS và thực thi."""
+        dialog = SetDnsDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            primary_dns, secondary_dns = dialog.get_dns_values()
+            if not primary_dns: # Should not happen if placeholder is used
+                QMessageBox.warning(self, "Thiếu DNS chính", "Vui lòng nhập địa chỉ DNS chính.")
+                return
+            
+            # Kiểm tra sơ bộ định dạng IP (đơn giản)
+            import re
+            ip_pattern = r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"
+            if not re.match(ip_pattern, primary_dns) or (secondary_dns and not re.match(ip_pattern, secondary_dns)):
+                QMessageBox.warning(self, "Định dạng IP không hợp lệ", "Vui lòng nhập địa chỉ DNS đúng định dạng IP (ví dụ: 8.8.8.8).")
+                return
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_utilities, set_dns_servers, "utility_set_dns", needs_wmi=True, task_args=[primary_dns, secondary_dns])
 
     def closeEvent(self, event): # type: ignore
         # Dọn dẹp luồng khi đóng ứng dụng
@@ -1638,7 +1744,7 @@ class PcInfoAppQt(QMainWindow):
 
     def _style_save_button(self, button, on_click_action):
         button.setCursor(Qt.PointingHandCursor)
-        button.setFont(self.default_font)
+        button.setFont(self.body_font)
         button.setEnabled(False) # Initially disabled
         button.setObjectName("SaveResultButton") # For QSS styling
         button.clicked.connect(on_click_action)

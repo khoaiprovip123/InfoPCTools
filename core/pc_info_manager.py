@@ -270,8 +270,15 @@ def format_system_details_to_string(system_info_data_dict):
             f"Nhà sản xuất: {gpu.get('Nhà sản xuất', NOT_IDENTIFIED)}",
             f"Tổng bộ nhớ (MB): {gpu.get('Tổng bộ nhớ (MB)', NOT_AVAILABLE)}",
             f"Độ phân giải hiện tại: {gpu.get('Độ phân giải hiện tại', NOT_IDENTIFIED)}",
+            f"Phiên bản Driver: {gpu.get('Phiên bản Driver', NOT_AVAILABLE)}",
+            f"Ngày Driver: {gpu.get('Ngày Driver', NOT_AVAILABLE)}",
         ]
-    output_lines.extend(_format_list_of_dicts(gpu_details, "GPU", format_gpu_item))
+    # Lọc ra ghi chú để hiển thị riêng
+    gpu_items_only = [gpu for gpu in gpu_details if "Ghi chú" not in gpu]
+    gpu_notes = [gpu.get("Ghi chú") for gpu in gpu_details if "Ghi chú" in gpu]
+    output_lines.extend(_format_list_of_dicts(gpu_items_only, "GPU", format_gpu_item))
+    if gpu_notes and gpu_notes[0]:
+        output_lines.append(f"    Ghi chú GPU: {gpu_notes[0]}")
 
     # Màn hình (Chuyển vào cùng Phần cứng)
     output_lines.append("  Màn hình:")
@@ -357,6 +364,29 @@ def format_system_checks_to_string(system_checks_data_dict):
         return [f"{temp_item.get('Vùng', NOT_IDENTIFIED)}: {temp_item.get('Nhiệt độ (°C)', NOT_AVAILABLE)} °C"] # Bỏ thụt lề '  '
     output_lines.extend(_format_list_of_dicts(temperatures, "Cảm biến", format_temp_item))
     # output_lines.append("") # Bỏ dòng trống
+    disk_health_list = system_checks_data_dict.get("Tình trạng ổ cứng (S.M.A.R.T.)", [])
+    output_lines.append("")
+    output_lines.append("**Tình trạng Ổ cứng (S.M.A.R.T.):**")
+    def format_disk_health_item(item):
+        return [
+            f"Model: {item.get('Model', NOT_IDENTIFIED)} (Size: {item.get('Kích thước (GB)', 'N/A')} GB)",
+            f"  DeviceID: {item.get('DeviceID', NOT_IDENTIFIED)}",
+            f"  Trạng thái (Win32): {item.get('Trạng thái (Win32)', NOT_IDENTIFIED)}",
+            f"  Dự đoán Lỗi (S.M.A.R.T.): {item.get('Dự đoán Lỗi (S.M.A.R.T.)', NOT_AVAILABLE)}",
+            f"  Mã lý do (S.M.A.R.T.): {item.get('Mã lý do (S.M.A.R.T.)', NOT_AVAILABLE) if item.get('Dự đoán Lỗi (S.M.A.R.T.)') == 'Có thể sắp lỗi' else NOT_AVAILABLE}",
+        ]
+    output_lines.extend(_format_list_of_dicts(disk_health_list, "Ổ đĩa", format_disk_health_item))
+
+    battery_details_list = system_checks_data_dict.get("Chi tiết Pin (Laptop)", [])
+    output_lines.append("")
+    output_lines.append("**Chi tiết Pin (Laptop):**")
+    def format_battery_item(item):
+        return [
+            f"Tên: {item.get('Tên Pin', NOT_IDENTIFIED)} - Trạng thái: {item.get('Trạng thái', NOT_AVAILABLE)}",
+            f"  Mức pin: {item.get('Mức pin ước tính (%)', NOT_AVAILABLE)}%",
+            f"  Sức khỏe ước tính: {item.get('Sức khỏe Pin Ước tính (%)', NOT_AVAILABLE)} (Thiết kế: {item.get('Dung lượng Thiết kế (mWh)', 'N/A')} mWh, Sạc đầy: {item.get('Dung lượng Sạc đầy (mWh)', 'N/A')} mWh)",
+        ]
+    output_lines.extend(_format_list_of_dicts(battery_details_list, "Pin", format_battery_item))
 
     return "\n".join(output_lines)
 
