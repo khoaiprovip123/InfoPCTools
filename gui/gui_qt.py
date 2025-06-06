@@ -1738,40 +1738,45 @@ class PcInfoAppQt(QMainWindow):
                     self.label_gpu_info.setText(f"GPU: {NOT_AVAILABLE}")
                     self.progress_gpu.setValue(0)
 
-                # System Status (Basic check for now)
-                # A more sophisticated check would involve looking for specific errors/warnings from various functions
-                has_errors_or_warnings = "Lỗi" in str(self.pc_info_dict) or "Error" in str(self.pc_info_dict) or "Cảnh báo" in str(self.pc_info_dict)
-                # Example: Count specific warnings
-                warning_count = 0
-                if pc_data.get("Trạng thái kích hoạt Windows") != "Đã kích hoạt": warning_count +=1
-                # Add more checks here (e.g., SMART status if available, low disk space)
+                # System Status - Cập nhật sau cùng để không làm chậm các progress bar
+                def update_dashboard_status():
+                    has_errors_or_warnings = "Lỗi" in str(self.pc_info_dict) or "Error" in str(self.pc_info_dict) or "Cảnh báo" in str(self.pc_info_dict)
+                    warning_count = 0
+                    if pc_data.get("Trạng thái kích hoạt Windows") != "Đã kích hoạt": warning_count +=1
+                    # Thêm các kiểm tra cảnh báo khác ở đây nếu cần
 
-                if warning_count > 0:
-                    self.label_system_status.setText(f"<font color='{ACCENT_COLOR}'>⚠️ {warning_count} cảnh báo cần xử lý</font>")
-                elif has_errors_or_warnings and warning_count == 0: # General error if no specific warnings
-                     self.label_system_status.setText(f"<font color='{BUTTON_DANGER_BG}'>❌ Có lỗi xảy ra khi lấy thông tin</font>")
-                else:
-                    self.label_system_status.setText(f"<font color='{SECONDARY_COLOR}'>🟢 Hệ thống hoạt động tốt</font>")
+                    if warning_count > 0:
+                        self.label_system_status.setText(f"<font color='{ACCENT_COLOR}'>⚠️ {warning_count} cảnh báo cần xử lý</font>")
+                    elif has_errors_or_warnings and warning_count == 0:
+                         self.label_system_status.setText(f"<font color='{BUTTON_DANGER_BG}'>❌ Có lỗi xảy ra khi lấy thông tin</font>")
+                    else:
+                        self.label_system_status.setText(f"<font color='{SECONDARY_COLOR}'>🟢 Hệ thống hoạt động tốt</font>")
+                QTimer.singleShot(0, update_dashboard_status)
 
             # --- Update System Info Tab (Cards) ---
             if hasattr(self, 'card_general_info'): # Check if system info tab elements exist
-                self._populate_card(self.card_general_info, pc_data, [("Tên máy tính", "Tên PC"), ("Loại máy", "Loại Máy"), ("Địa chỉ IP", "IP"), ("Địa chỉ MAC", "MAC")])
-                self._populate_card(self.card_os_info, pc_data, [("Hệ điều hành", "HĐH"), ("Phiên bản Windows", "Phiên Bản"), ("Trạng thái kích hoạt Windows", "Kích hoạt")])
-                self._populate_card(self.card_cpu_info, pc_data.get("CPU", {}), [("Kiểu máy", "Model"), ("Số lõi", "Lõi"), ("Số luồng", "Luồng"), ("Tốc độ cơ bản", "Tốc độ")])
-                self.card_ram_info_data = {"Tổng RAM": pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE)} # Store for potential details
-                if "RAM" in pc_data and "Chi tiết các thanh RAM" in pc_data["RAM"]:
-                    self.card_ram_info_data["Chi tiết"] = pc_data["RAM"]["Chi tiết các thanh RAM"] # Add details if available
-                self._populate_card(self.card_ram_info, self.card_ram_info_data, [("Tổng RAM", "Tổng RAM"), ("Chi tiết", "Chi tiết")])
-                self._populate_card(self.card_mainboard_info, pc_data.get("Mainboard", {}), [("Nhà sản xuất", "NSX"), ("Kiểu máy", "Model"), ("Số Sê-ri", "Serial")])
+                # Sử dụng QTimer.singleShot để cập nhật từng card một cách trì hoãn
+                QTimer.singleShot(0, lambda d=pc_data: self._populate_card(self.card_general_info, d, [("Tên máy tính", "Tên PC"), ("Loại máy", "Loại Máy"), ("Địa chỉ IP", "IP"), ("Địa chỉ MAC", "MAC")]))
+                QTimer.singleShot(0, lambda d=pc_data: self._populate_card(self.card_os_info, d, [("Hệ điều hành", "HĐH"), ("Phiên bản Windows", "Phiên Bản"), ("Trạng thái kích hoạt Windows", "Kích hoạt")]))
+                QTimer.singleShot(0, lambda d=pc_data.get("CPU", {}): self._populate_card(self.card_cpu_info, d, [("Kiểu máy", "Model"), ("Số lõi", "Lõi"), ("Số luồng", "Luồng"), ("Tốc độ cơ bản", "Tốc độ")]))
+                
+                def update_ram_card_deferred():
+                    ram_data_for_card = {"Tổng RAM": pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE)}
+                    if "RAM" in pc_data and "Chi tiết các thanh RAM" in pc_data["RAM"]: # Giả sử có key này
+                        ram_data_for_card["Chi tiết"] = pc_data["RAM"]["Chi tiết các thanh RAM"]
+                    self._populate_card(self.card_ram_info, ram_data_for_card, [("Tổng RAM", "Tổng RAM"), ("Chi tiết", "Chi tiết")])
+                QTimer.singleShot(0, update_ram_card_deferred)
+
+                QTimer.singleShot(0, lambda d=pc_data.get("Mainboard", {}): self._populate_card(self.card_mainboard_info, d, [("Nhà sản xuất", "NSX"), ("Kiểu máy", "Model"), ("Số Sê-ri", "Serial")]))
                 
                 disk_keys_map = [("Kiểu máy", "Model"), ("Dung lượng (GB)", "Size"), ("Giao tiếp", "Interface"), ("Loại phương tiện", "Loại"), ("Số Sê-ri", "Serial")]
-                self._populate_card(self.card_disks_info, pc_data.get("Ổ đĩa", [{"Thông tin": NOT_FOUND}]), disk_keys_map)
+                QTimer.singleShot(0, lambda d=pc_data.get("Ổ đĩa", [{"Thông tin": NOT_FOUND}]): self._populate_card(self.card_disks_info, d, disk_keys_map))
 
                 gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Đ.P.Giải"), ("Phiên bản Driver", "Driver Ver"), ("Ngày Driver", "Ngày Driver")]
-                self._populate_card(self.card_gpus_info, pc_data.get("Card đồ họa (GPU)", [{"Thông tin": NOT_FOUND}]), gpu_keys_map)
+                QTimer.singleShot(0, lambda d=pc_data.get("Card đồ họa (GPU)", [{"Thông tin": NOT_FOUND}]): self._populate_card(self.card_gpus_info, d, gpu_keys_map))
 
                 screen_keys_map = [("Tên", "Tên"), ("Độ phân giải (pixels)", "Đ.P.Giải (px)"), ("Tỷ lệ khung hình", "Tỷ lệ"), ("Kích thước (đường chéo)", "K.Thước"), ("Trạng thái", "Tr.Thái")]
-                self._populate_card(self.card_screens_info, screen_data, screen_keys_map)
+                QTimer.singleShot(0, lambda d=screen_data: self._populate_card(self.card_screens_info, d, screen_keys_map))
             
             # Kích hoạt nút "Xuất Báo Cáo PC" nếu đang ở tab Báo cáo & Cài đặt
             if self.pages_stack.currentWidget() == self.page_report_settings:
