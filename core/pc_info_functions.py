@@ -572,7 +572,7 @@ def get_recent_event_log_summary(wmi_service, hours_ago=24):
     summary = {"System": {"Errors": 0, "Warnings": 0}, "Application": {"Errors": 0, "Warnings": 0},
                "Ghi chú": f"Tổng hợp lỗi/cảnh báo trong {hours_ago} giờ qua. Kiểm tra Event Viewer để biết chi tiết."}
     try:
-        # threshold_utc_dt = datetime.utcnow() - timedelta(hours=hours_ago) # Naive datetime
+
         # Make threshold_utc_dt timezone-aware (UTC)
         from datetime import timezone as dt_timezone # Import timezone
         threshold_utc_dt = datetime.now(dt_timezone.utc) - timedelta(hours=hours_ago)
@@ -599,7 +599,11 @@ def get_recent_event_log_summary(wmi_service, hours_ago=24):
                             parsable_time_str = time_generated_as_str.split('.')[0]
                         else: # Handle cases where there might not be a fractional part or offset
                             parsable_time_str = time_generated_as_str[:14] # Take first 14 chars
-                        event_time_pywintypes = pywintypes.Time(parsable_time_str) # type: ignore
+                        
+                        # Convert string to datetime object first
+                        # Assume WMI time is UTC, make the datetime object UTC-aware
+                        dt_object_for_pywintypes = datetime.strptime(parsable_time_str, "%Y%m%d%H%M%S").replace(tzinfo=dt_timezone.utc)
+                        event_time_pywintypes = pywintypes.Time(dt_object_for_pywintypes) # type: ignore
                         
                         if event_time_pywintypes >= threshold_utc_dt: # Compare timezone-aware datetimes
                             event_type_code = _get_wmi_property(event_obj, "EventType", 0)
@@ -1208,7 +1212,11 @@ def get_recent_event_logs(wmi_service, hours_ago=24, max_events_per_log=25):
                             parsable_time_str_detail = time_generated_str.split('.')[0]
                         else:
                             parsable_time_str_detail = time_generated_str[:14]
-                        event_time_pywintypes = pywintypes.Time(parsable_time_str_detail) # type: ignore
+                        
+                        # Assume WMI time is UTC, make the datetime object UTC-aware
+                        dt_object_for_pywintypes_detail = datetime.strptime(parsable_time_str_detail, "%Y%m%d%H%M%S").replace(tzinfo=dt_timezone.utc)
+                        event_time_pywintypes = pywintypes.Time(dt_object_for_pywintypes_detail) # type: ignore
+                        
                         
                         if event_time_pywintypes < threshold_utc_dt:
                             continue # Skip if older than threshold
