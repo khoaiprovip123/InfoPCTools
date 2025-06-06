@@ -2146,6 +2146,128 @@ def get_windows_update_status(wmi_service=None):
         "last_checked": "N/A",
         "details": "Chức năng kiểm tra trạng thái Windows Update đang được phát triển."
     }
+
+def list_printers(wmi_service):
+    """Liệt kê tất cả các máy in đã cài đặt."""
+    if not wmi_service:
+        return [{"Lỗi": ERROR_WMI_CONNECTION, "Chi tiết": "Không thể liệt kê máy in."}]
+    printers_info = []
+    try:
+        printers = wmi_service.ExecQuery("SELECT Name, DriverName, PortName, Default, WorkOffline, PrinterStatus, PrinterState FROM Win32_Printer")
+        if not list(printers):
+            return [{"Thông tin": "Không tìm thấy máy in nào được cài đặt."}]
+
+        status_map = {
+            1: "Khác", 2: "Không xác định", 3: "Rảnh (Idle)", 4: "Đang in",
+            5: "Khởi động (Warmup)", 6: "Ngừng in", 7: "Ngoại tuyến (Offline)"
+        }
+        state_map = { # Detailed state, can be combined with PrinterStatus
+            0: "Sẵn sàng/Rảnh",
+            1: "Tạm dừng", 2: "Lỗi", 4: "Đang chờ xóa", 8: "Paper Jam", 16: "Paper Out",
+            32: "Manual Feed", 64: "Paper Problem", 128: "Ngoại tuyến", 256: "I/O Active",
+            512: "Busy", 1024: "Đang in", 2048: "Đang khởi động", 4096: "Processing",
+            # Add more as needed from Win32_Printer PrinterState documentation
+        }
+
+        for printer in printers:
+            name = _get_wmi_property(printer, "Name", NOT_IDENTIFIED)
+            driver = _get_wmi_property(printer, "DriverName", NOT_IDENTIFIED)
+            port = _get_wmi_property(printer, "PortName", NOT_IDENTIFIED)
+            is_default = _get_wmi_property(printer, "Default", False)
+            is_offline = _get_wmi_property(printer, "WorkOffline", False)
+            printer_status_code = _get_wmi_property(printer, "PrinterStatus", 2) # Default to Unknown
+            printer_state_code = _get_wmi_property(printer, "PrinterState", 0)
+
+            status_text = status_map.get(printer_status_code, f"Mã: {printer_status_code}")
+            if printer_state_code != 0 and printer_state_code != printer_status_code : # Add more detail if PrinterState is informative
+                status_text += f" ({state_map.get(printer_state_code, f'State: {printer_state_code}')})"
+
+            printers_info.append({
+                "Tên Máy In": name,
+                "Driver": driver,
+                "Cổng": port,
+                "Mặc định": "Có" if is_default else "Không",
+                "Trạng thái": status_text,
+                "Làm việc Offline": "Có" if is_offline else "Không",
+            })
+        return printers_info
+    except (pywintypes.com_error, Exception) as e:
+        logging.error(f"Lỗi khi liệt kê máy in: {e}", exc_info=True)
+        return [{"Lỗi": f"{ERROR_FETCHING_INFO} máy in: {str(e)}"}]
+
+def remove_printer(wmi_service, printer_name):
+    """Gỡ bỏ một máy in cụ thể. Yêu cầu quyền Admin."""
+    if not is_admin():
+        return {"status": "error", "message": "Yêu cầu quyền Administrator để gỡ bỏ máy in."}
+    if not wmi_service:
+        return {"status": "error", "message": ERROR_WMI_CONNECTION}
+    try:
+        # Escape single quotes in printer_name for WQL query
+        printer_name_escaped = printer_name.replace("'", "''")
+        query = f"SELECT * FROM Win32_Printer WHERE Name = '{printer_name_escaped}'"
+        printers_to_remove = wmi_service.ExecQuery(query)
+        if not list(printers_to_remove):
+            return {"status": "warning", "message": f"Không tìm thấy máy in có tên '{printer_name}'."}
+
+        for printer_obj in printers_to_remove:
+            printer_obj.Delete_() # Call WMI method to delete the printer
+        return {"status": "success", "message": f"Đã gửi yêu cầu gỡ bỏ máy in '{printer_name}'. Kiểm tra lại danh sách máy in."}
+    except (pywintypes.com_error, Exception) as e:
+        logging.error(f"Lỗi khi gỡ bỏ máy in '{printer_name}': {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi khi gỡ bỏ máy in '{printer_name}': {str(e)}"}
+
+def clear_print_queue(wmi_service, printer_name=None):
+    """Xóa hàng đợi in. Nếu printer_name là None, cố gắng xóa tất cả. Yêu cầu quyền Admin."""
+    if not is_admin():
+        return {"status": "error", "message": "Yêu cầu quyền Administrator để xóa hàng đợi in."}
+    if not wmi_service and printer_name: # WMI needed if specific printer
+        return {"status": "error", "message": ERROR_WMI_CONNECTION}
+
+    try:
+        if printer_name:
+            printer_name_escaped = printer_name.replace("'", "''")
+            query = f"SELECT * FROM Win32_PrintJob WHERE Document LIKE '%{printer_name_escaped}%'" # Approximate match
+            print_jobs = wmi_service.ExecQuery(query)
+            count = 0
+            for job in print_jobs:
+                job.Delete_()
+                count += 1
+            return {"status": "success", "message": f"Đã xóa {count} lệnh in khỏi hàng đợi của '{printer_name}'."}
+        else: # Clear all print jobs by restarting spooler and clearing spool folder
+            win32serviceutil.StopService("Spooler")
+            time.sleep(2) # Wait for service to stop
+            spool_dir = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32", "spool", "PRINTERS")
+            deleted_files = 0
+            for f_name in os.listdir(spool_dir):
+                if f_name.upper().endswith((".SHD", ".SPL")):
+                    os.remove(os.path.join(spool_dir, f_name))
+                    deleted_files +=1
+            win32serviceutil.StartService("Spooler")
+            return {"status": "success", "message": f"Đã khởi động lại Print Spooler và xóa {deleted_files} file trong hàng đợi."}
+    except (pywintypes.com_error, Exception) as e:
+        logging.error(f"Lỗi khi xóa hàng đợi in: {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi khi xóa hàng đợi in: {str(e)}"}
+
+def restart_print_spooler_service():
+    """Khởi động lại dịch vụ Print Spooler. Yêu cầu quyền Admin."""
+    if not is_admin():
+        return {"status": "error", "message": "Yêu cầu quyền Administrator để quản lý dịch vụ."}
+    try:
+        win32serviceutil.StopService("Spooler")
+        time.sleep(2) # Chờ dịch vụ dừng hẳn
+        win32serviceutil.StartService("Spooler")
+        return {"status": "success", "message": "Đã khởi động lại dịch vụ Print Spooler thành công."}
+    except Exception as e:
+        logging.error(f"Lỗi khi khởi động lại Print Spooler: {e}", exc_info=True)
+        # Cố gắng khởi động lại nếu nó đang bị kẹt ở trạng thái dừng
+        try:
+            if win32serviceutil.QueryServiceStatus("Spooler")[1] == win32service.SERVICE_STOPPED:
+                win32serviceutil.StartService("Spooler")
+                return {"status": "success", "message": "Dịch vụ Print Spooler đã được khởi động (trước đó bị dừng)."}
+        except Exception as e2:
+            logging.error(f"Lỗi phụ khi cố gắng khởi động Print Spooler: {e2}")
+        return {"status": "error", "message": f"Lỗi khi khởi động lại Print Spooler: {str(e)}"}
+
     # --- Hàm lấy tình trạng ổ cứng (S.M.A.R.T. cơ bản) ---
 def get_disk_health_status(wmi_service):
     """
