@@ -9,7 +9,7 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QStackedWidget, QListWidget, QListWidgetItem, QSplitter, QDialog, QFormLayout, QDialogButtonBox, QProgressBar,
+    QPushButton, QLabel, QTextEdit, QLineEdit, QComboBox, QStackedWidget, QListWidget, QListWidgetItem, QSplitter, QDialog, QFormLayout, QDialogButtonBox, QProgressBar, QSizePolicy,
     QGroupBox, QScrollArea, QMessageBox, QFileDialog, QGridLayout, QFrame, QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QCheckBox
 )
@@ -45,7 +45,8 @@ from core.pc_info_functions import ( # type: ignore
     calculate_system_health_score, # Cho System Health Score
     apply_gaming_mode,             # Cho Gaming Mode
     manage_startup_item,           # Cho Startup Manager (enable/disable/delete)
-    get_windows_update_status      # Cho Update Center
+    get_windows_update_status,     # Cho Update Center
+    list_printers, remove_printer, clear_print_queue, restart_print_spooler_service # Printer utilities
 )
 from core.pc_info_manager import (
     validate_user_input, generate_filename, save_text_to_file,
@@ -307,6 +308,7 @@ class PcInfoAppQt(QMainWindow):
         self.h1_font = QFont(DEFAULT_FONT_FAMILY, H1_FONT_SIZE, QFont.Bold)
         self.h2_font = QFont(DEFAULT_FONT_FAMILY, H2_FONT_SIZE, QFont.Bold)
         self.body_font = QFont(DEFAULT_FONT_FAMILY, BODY_FONT_SIZE)
+        self.bold_body_font = QFont(DEFAULT_FONT_FAMILY, BODY_FONT_SIZE, QFont.Bold) # Font mới
         self.monospace_font = QFont(MONOSPACE_FONT_FAMILY, MONOSPACE_FONT_SIZE)
 
         # --- State Variables ---
@@ -356,6 +358,8 @@ class PcInfoAppQt(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(10,10,10,10) # Khoảng cách từ các cạnh cửa sổ
+        self.main_layout.setSpacing(10) # Khoảng cách giữa header, splitter, footer
 
         # --- Top Header Bar (New) ---
         top_header_bar = QFrame()
@@ -378,12 +382,7 @@ class PcInfoAppQt(QMainWindow):
         except Exception as e:
             logging.warning(f"Không thể tải icon cho nút thu/gọn thanh điều hướng: {e}")
 
-        # App Title and Logo
-        app_title_label = QLabel("Tối Ưu PC Pro")
-        app_title_label.setFont(self.h1_font)
-        app_title_label.setObjectName("AppTitleLabel")
-        top_header_layout.addWidget(app_title_label)
-        
+        # App Logo (Thêm logo trước)
         if self.logo_pixmap:
             self.logo_label = QLabel()
             self.logo_label.setPixmap(self.logo_pixmap)
@@ -755,9 +754,12 @@ class PcInfoAppQt(QMainWindow):
     def _create_security_tab(self, parent_tab_widget):
         tab_main_layout = QVBoxLayout(parent_tab_widget) # Layout chính của tab là QVBoxLayout
 
-        # --- Content Layout (Actions and Results side-by-side) ---
-        content_layout = QHBoxLayout() # Layout ngang cho 2 cột nội dung
-        tab_main_layout.addLayout(content_layout) # Thêm content_layout vào tab_main_layout
+        # --- Content Splitter (Actions and Results side-by-side) ---
+        content_splitter = QSplitter(Qt.Horizontal) # Sử dụng QSplitter
+        tab_main_layout.addWidget(content_splitter)
+        # content_layout = QHBoxLayout() # Layout ngang cho 2 cột nội dung # Bỏ QHBoxLayout
+        # tab_main_layout.addLayout(content_layout) # Thêm content_layout vào tab_main_layout # Bỏ QHBoxLayout
+
 
 
         # --- Left Column: Search Bar and Action Buttons ---
@@ -789,8 +791,9 @@ class PcInfoAppQt(QMainWindow):
 
         self.security_actions_layout.addStretch(1) 
         scroll_area_actions.setWidget(security_actions_widget_container)
-        left_column_layout.addWidget(scroll_area_actions) # Add scroll area below search bar
-        content_layout.addWidget(left_column_widget, 2) # Tăng tỷ lệ cho cột trái
+        left_column_layout.addWidget(scroll_area_actions)
+        # content_layout.addWidget(left_column_widget, 2) # Bỏ QHBoxLayout
+        content_splitter.addWidget(left_column_widget) # Thêm vào QSplitter
 
         # --- Right Column: Utilities Results Display ---
         results_container_widget = QWidget()
@@ -819,12 +822,15 @@ class PcInfoAppQt(QMainWindow):
         self.stacked_widget_results_security.addWidget(self.table_security_results_qt)
 
         self.utilities_results_main_layout.addWidget(self.stacked_widget_results_security, 1)
-        content_layout.addWidget(results_container_widget, 3)
+        # content_layout.addWidget(results_container_widget, 3) # Bỏ QHBoxLayout
+        content_splitter.addWidget(results_container_widget) # Thêm vào QSplitter
+        content_splitter.setSizes([320, 430]) # Tăng kích thước cột trái
 
     def _create_optimize_tab(self, parent_tab_widget):
         tab_main_layout = QVBoxLayout(parent_tab_widget)
-        content_layout = QHBoxLayout()
-        tab_main_layout.addLayout(content_layout)
+        content_splitter_optimize = QSplitter(Qt.Horizontal) # Sử dụng QSplitter
+        tab_main_layout.addWidget(content_splitter_optimize)
+
 
         left_column_widget = QWidget()
         left_column_layout = QVBoxLayout(left_column_widget)
@@ -885,10 +891,22 @@ class PcInfoAppQt(QMainWindow):
         self._add_utility_button(advanced_opt_layout, "Dọn Dẹp Registry (Có Sao Lưu)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, clean_registry_with_backup, "optimize_clean_registry"))
         self.optimize_actions_layout.addWidget(group_advanced_optimization)
 
+        # Group: Quản lý Máy In
+        group_printer_management = QGroupBox("Quản lý Máy In")
+        group_printer_management.setFont(self.h2_font)
+        printer_mgmt_layout = QVBoxLayout(group_printer_management)
+        self._add_utility_button(printer_mgmt_layout, "Liệt kê Máy In", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, list_printers, "optimize_list_printers", needs_wmi=True, result_type="table"))
+        self._add_utility_button(printer_mgmt_layout, "Gỡ Máy In Lỗi", self.run_remove_printer_qt)
+        self._add_utility_button(printer_mgmt_layout, "Xóa Lệnh In (Tất cả)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, clear_print_queue, "optimize_clear_all_print_queues", needs_wmi=False)) # False for WMI as it restarts spooler
+        self._add_utility_button(printer_mgmt_layout, "Xóa Lệnh In (Chọn Máy In)", self.run_clear_specific_print_queue_qt)
+        self._add_utility_button(printer_mgmt_layout, "Fix Lỗi Máy In (Khởi động lại Spooler)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, restart_print_spooler_service, "optimize_restart_spooler", needs_wmi=False))
+        self.optimize_actions_layout.addWidget(group_printer_management)
+
         self.optimize_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(optimize_actions_widget_container)
         left_column_layout.addWidget(scroll_area_actions)
-        content_layout.addWidget(left_column_widget, 2)
+        # content_layout.addWidget(left_column_widget, 2) # Bỏ QHBoxLayout
+        content_splitter_optimize.addWidget(left_column_widget) # Thêm vào QSplitter
 
         results_container_widget = QWidget()
         self.optimize_results_main_layout = QVBoxLayout(results_container_widget)
@@ -922,12 +940,14 @@ class PcInfoAppQt(QMainWindow):
         self.optimize_results_main_layout.addWidget(self.startup_manager_buttons_frame)
 
         self.optimize_results_main_layout.addWidget(self.stacked_widget_results_optimize, 1)
-        content_layout.addWidget(results_container_widget, 3)
+        # content_layout.addWidget(results_container_widget, 3) # Bỏ QHBoxLayout
+        content_splitter_optimize.addWidget(results_container_widget) # Thêm vào QSplitter
+        content_splitter_optimize.setSizes([320, 430]) # Tăng kích thước cột trái
 
     def _create_network_tab(self, parent_tab_widget):
         tab_main_layout = QVBoxLayout(parent_tab_widget)
-        content_layout = QHBoxLayout()
-        tab_main_layout.addLayout(content_layout)
+        content_splitter_network = QSplitter(Qt.Horizontal) # Sử dụng QSplitter
+        tab_main_layout.addWidget(content_splitter_network)
 
         left_column_widget = QWidget()
         left_column_layout = QVBoxLayout(left_column_widget)
@@ -957,7 +977,8 @@ class PcInfoAppQt(QMainWindow):
         self.network_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(network_actions_widget_container)
         left_column_layout.addWidget(scroll_area_actions)
-        content_layout.addWidget(left_column_widget, 2)
+        # content_layout.addWidget(left_column_widget, 2) # Bỏ QHBoxLayout
+        content_splitter_network.addWidget(left_column_widget) # Thêm vào QSplitter
 
         results_container_widget = QWidget()
         self.network_results_main_layout = QVBoxLayout(results_container_widget)
@@ -981,7 +1002,9 @@ class PcInfoAppQt(QMainWindow):
         self.stacked_widget_results_network.addWidget(self.table_network_results_qt)
 
         self.network_results_main_layout.addWidget(self.stacked_widget_results_network, 1)
-        content_layout.addWidget(results_container_widget, 3)
+        # content_layout.addWidget(results_container_widget, 3) # Bỏ QHBoxLayout
+        content_splitter_network.addWidget(results_container_widget) # Thêm vào QSplitter
+        content_splitter_network.setSizes([320, 430]) # Tăng kích thước cột trái
 
     def _create_utilities_tab(self, parent_tab_widget): # This tab is now for remaining diagnostics
         # This is a placeholder, you'd move relevant buttons from old _create_utilities_tab here
@@ -1041,9 +1064,13 @@ class PcInfoAppQt(QMainWindow):
             button.setObjectName(object_name) # Use provided object_name for specific styling
         else:
             button.setObjectName("UtilityButton") # Default object_name for general utility button styling
-        button.setFont(self.body_font)
+        button.setFont(self.bold_body_font) # Sử dụng font bold_body_font
         button.setCursor(Qt.PointingHandCursor)
         button.clicked.connect(lambda checked=False, btn=button: on_click_action(btn)) # Pass button to action
+        
+        # Cho phép nút tự động xuống dòng nếu text quá dài
+        button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred) # Cho phép mở rộng ngang, giữ chiều cao ưu tiên
+        button.setStyleSheet("QPushButton { white-space: normal; text-align: left; padding-left: 10px; padding-right: 10px; }") # CSS để text wrap và căn trái
         layout.addWidget(button)
         return button
 
@@ -1051,9 +1078,8 @@ class PcInfoAppQt(QMainWindow):
         # This function is not directly used by the new nav structure.
         tab_main_layout_fixes = QVBoxLayout(parent_tab_widget)
 
-        # --- Content Layout (Actions and Results side-by-side) ---
-        content_layout_fixes = QHBoxLayout()
-        tab_main_layout_fixes.addLayout(content_layout_fixes)
+        content_splitter_fixes = QSplitter(Qt.Horizontal) # Sử dụng QSplitter
+        tab_main_layout_fixes.addWidget(content_splitter_fixes)
 
         # --- Left Column: Search Bar and Action Buttons ---
         left_column_widget_fixes = QWidget()
@@ -1097,7 +1123,8 @@ class PcInfoAppQt(QMainWindow):
         self.fixes_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(actions_widget_container)
         left_column_layout_fixes.addWidget(scroll_area_actions) # Add scroll area below search bar
-        content_layout_fixes.addWidget(left_column_widget_fixes, 2) # Tăng tỷ lệ cho cột trái
+        # content_layout_fixes.addWidget(left_column_widget_fixes, 2) # Bỏ QHBoxLayout
+        content_splitter_fixes.addWidget(left_column_widget_fixes) # Thêm vào QSplitter
 
 
         # Right Column: Fixes Results Display
@@ -1212,15 +1239,18 @@ class PcInfoAppQt(QMainWindow):
         scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Liên hệ:", "support@example.com"))
         scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Giấy phép:", "Phần mềm nội bộ"))
 
-        readme_text = """**README:**
+        readme_text = """**TỔNG QUAN SẢN PHẨM**
 
-Đây là công cụ hỗ trợ thu thập thông tin cấu hình máy tính và thực hiện một số tác vụ tiện ích, sửa lỗi cơ bản trên hệ điều hành Windows.
+**Tên sản phẩm:** Thông Tin Cấu Hình PC v2.0
+**Nhà phát triển:** HPC
+**Thị trường mục tiêu:** Người dùng cuối Việt Nam, Hỗ trợ CNTT, Doanh nghiệp nhỏ
+**Danh mục sản phẩm:** Công cụ Tiện ích & Tối ưu Hệ thống
 
 **Các chức năng chính:**
 - Thu thập thông tin chi tiết về phần cứng, phần mềm.
 - Cung cấp các tiện ích quét virus, kiểm tra ổ đĩa, pin, kích hoạt Windows.
 - Hỗ trợ các tác vụ sửa lỗi hệ thống như dọn dẹp file tạm, reset kết nối mạng, chạy SFC scan."""
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Mô tả:", readme_text, is_html=True))
+        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Mô tả & Chức năng:", readme_text, is_html=True)) # Đổi tiêu đề section
         scroll_area.setWidget(scroll_content_widget)
         layout.addWidget(scroll_area)
     def _create_results_display_area(self, group_title, text_edit_object_name, table_widget_object_name):
@@ -1292,7 +1322,7 @@ class PcInfoAppQt(QMainWindow):
             }}
             QGroupBox {{
                 background-color: {GROUPBOX_BG}; /* Background for groupbox */
-                border: 1px solid {BORDER_COLOR_LIGHT};
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Giữ lại viền nhẹ cho GroupBox để phân tách */
                 border-radius: 8px; /* Increased border radius */
                 margin-top: 20px; /* Increased margin for title */
                 padding: 10px; /* Padding inside groupbox */
@@ -1303,7 +1333,7 @@ class PcInfoAppQt(QMainWindow):
                 padding: 2px 8px; /* Increased title padding */
                 margin-left: 10px; /* Indent title slightly */
                 background-color: {WINDOW_BG}; /* Title background same as window */
-                border-radius: 4px;
+                border-radius: 4px; /* Bo góc cho tiêu đề GroupBox */
                 color: {ACCENT_COLOR}; /* Color for groupbox title */
                 /* font-family, font-size, font-weight for GroupBox titles are set by self.h2_font in Python */
                 /* e.g., group_user_info.setFont(self.h2_font) */
@@ -1316,7 +1346,7 @@ class PcInfoAppQt(QMainWindow):
                 /* Default button style - will be overridden by specific objectNames or classes */
                 background-color: {BUTTON_SECONDARY_BG}; 
                 color: {TEXT_COLOR_PRIMARY};
-                border: none; /* Bỏ viền nút mặc định */
+                border: 1px solid transparent; /* Viền trong suốt để giữ kích thước, nhưng không hiển thị */
                 border-radius: 6px; /* Increased border radius */
                 padding: 8px 15px; /* Increased padding */
                 min-height: 20px; /* Minimum height */
@@ -1324,7 +1354,7 @@ class PcInfoAppQt(QMainWindow):
             }} 
             QPushButton:hover {{
                 background-color: {BUTTON_SECONDARY_HOVER};
-                border-color: {ACCENT_COLOR_HOVER}; /* Highlight border on hover */
+                /* border-color: {ACCENT_COLOR_HOVER}; */ /* Bỏ thay đổi màu viền khi hover nếu không muốn */
             }} # type: ignore
             QPushButton:pressed {{
                 background-color: {BUTTON_SECONDARY_PRESSED};
@@ -1332,18 +1362,18 @@ class PcInfoAppQt(QMainWindow):
             QPushButton:disabled {{
                 background-color: #E0E0E0; /* Lighter grey for disabled */
                 color: #A0A0A0; /* Lighter text for disabled */ 
-                border: none; /* Bỏ viền nút bị vô hiệu hóa */
+                border: 1px solid transparent; /* Viền trong suốt */
             }}
             QLineEdit, QComboBox, QTextEdit {{
                 background-color: {INPUT_BG};
-                border: none; /* Bỏ viền cho input fields */
+                border: 1px solid {INPUT_BORDER_COLOR}; /* Viền nhẹ cho input fields để dễ nhìn */
                 border-radius: 5px; /* Moderate border radius */
                 padding: 6px; /* Increased padding */
                 color: {TEXT_COLOR_PRIMARY};
                 /* font-family and font-size are inherited or set by specific QFont in code */
             }}
             QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
-                /* border: 1px solid {ACCENT_COLOR}; */ /* Bỏ viền khi focus hoặc tùy chỉnh lại */
+                border: 1px solid {ACCENT_COLOR}; /* Viền cam khi focus */
             }}
             QComboBox::drop-down {{
                 border: none;
@@ -1369,15 +1399,16 @@ class PcInfoAppQt(QMainWindow):
                 /* Font will be set by self.default_font or self.monospace_font in Python */
             }}
             QTabWidget::pane {{ /* The tab widget frame */
-                border: none; /* Bỏ viền của pane */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho pane */
                 background: {FRAME_BG};
-                border-bottom-left-radius: 8px; /* Rounded corners for pane */
-                border-bottom-right-radius: 8px;
+                border-radius: 8px; /* Bo góc cho toàn bộ pane */
+                /* border-top: none; */ /* Nếu muốn tab liền với pane */
             }}
             QTabBar::tab {{
                 background: {TAB_BG_INACTIVE};
                 color: {TAB_TEXT_INACTIVE}; 
-                border: none; /* Bỏ viền của tab */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho tab */
+                border-bottom: none; /* Bỏ viền dưới của tab không được chọn */
                 border-top-left-radius: 6px;
                 border-top-right-radius: 6px;
                 padding: 8px 15px; /* Adjusted padding for tabs */
@@ -1387,12 +1418,12 @@ class PcInfoAppQt(QMainWindow):
             QTabBar::tab:selected {{
                 background: {TAB_BG_ACTIVE}; /* Active tab background same as pane */
                 color: {TAB_TEXT_ACTIVE};
-                border-color: {BORDER_COLOR_LIGHT};
-                border-bottom: 1px solid {TAB_BG_ACTIVE}; /* "Erase" tab bottom border with pane color */
+                border-color: {BORDER_COLOR_LIGHT}; /* Màu viền giống pane */
+                /* border-bottom: 1px solid {TAB_BG_ACTIVE}; */ /* Bỏ viền dưới của tab được chọn để liền với pane */
             }}
             QListWidget#NavList {{
                 background-color: {WINDOW_BG}; /* Match window background or a slightly different shade */
-                border: none; /* Bỏ viền của NavList */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho NavList */
                 padding: 5px;
                 outline: 0; /* Remove focus outline if not desired */
             }}
@@ -1413,11 +1444,14 @@ class PcInfoAppQt(QMainWindow):
                 background-color: transparent; /* Scroll area background should be transparent */
             }}
             QSplitter::handle {{
-                background-color: {BORDER_COLOR_LIGHT}; /* Color for the splitter handle */
+                background-color: {BORDER_COLOR_LIGHT}; /* Make it a line */
+                width: 1px; /* For vertical splitter */
+                height: 1px; /* For horizontal splitter (if any) */
+                border: none; /* No extra border on the handle itself */
             }}
             QSplitter::handle:hover {{ background-color: {BORDER_COLOR_DARK}; }}
             QScrollBar:vertical {{
-                border: none; /* Bỏ viền của scrollbar */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho scrollbar */
                 background: {WINDOW_BG};
                 width: 12px;
                 margin: 0px 0px 0px 0px;
@@ -1425,7 +1459,7 @@ class PcInfoAppQt(QMainWindow):
             QScrollBar::handle:vertical {{
                 background: {BORDER_COLOR_DARK};
                 min-height: 20px;
-                border-radius: 6px;
+                border-radius: 6px; /* Bo góc cho tay cầm scrollbar */
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 border: none;
@@ -1443,23 +1477,25 @@ class PcInfoAppQt(QMainWindow):
                  font-family: "{MONOSPACE_FONT_FAMILY}";
                  font-size: {MONOSPACE_FONT_SIZE}pt;
                  background-color: #FAFAFA; /* Slightly different background for readability */
-                 border: none; /* Bỏ viền cho các ô hiển thị kết quả text */
+                 border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho ô text kết quả */
+                 border-radius: 5px; /* Bo góc */
             }}
             QTableWidget#ResultTableWidget {{
                 font-family: "{DEFAULT_FONT_FAMILY}";
                 font-size: {BODY_FONT_SIZE-1}pt; /* Slightly smaller for table data */
                 alternate-background-color: #F5F5F5; /* Light grey for alternate rows */
-                gridline-color: transparent; /* Làm trong suốt đường lưới */
-                border: none; /* Bỏ viền cho bảng kết quả */
+                gridline-color: {BORDER_COLOR_LIGHT}; /* Đường lưới mờ */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho bảng */
+                border-radius: 5px; /* Bo góc */
             }}
             QTableWidget#ResultTableWidget::item:hover {{
                 background-color: {ACCENT_COLOR_HOVER};
                 color: white; 
             }}
             QHeaderView::section {{
-                background-color: {BUTTON_SECONDARY_BG};
+                background-color: {FRAME_BG}; /* Nền header giống nền frame */
                 padding: 4px;
-                border: none; /* Bỏ viền cho header của bảng */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho header */
                 font-weight: bold;
             }}
             /* Styling for QMessageBox */
@@ -1475,7 +1511,7 @@ class PcInfoAppQt(QMainWindow):
             QMessageBox QPushButton {{ /* Buttons in QMessageBox */
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {BUTTON_SECONDARY_TEXT}; 
-                border: none; /* Bỏ viền nút trong QMessageBox */
+                border: 1px solid transparent; /* Viền trong suốt */
                 border-radius: 4px;
                 padding: 6px 12px;
                 min-width: 70px;
@@ -1496,18 +1532,18 @@ class PcInfoAppQt(QMainWindow):
             }}
             QDialog#SetDnsDialog QLineEdit {{
                 background-color: {INPUT_BG};
-                border: none; /* Bỏ viền QLineEdit trong dialog DNS */
+                border: 1px solid {INPUT_BORDER_COLOR}; /* Viền cho QLineEdit trong dialog DNS */
                 border-radius: 4px;
                 padding: 5px;
                 color: {TEXT_COLOR_PRIMARY};
             }}
             QDialog#SetDnsDialog QLineEdit:focus {{
-                /* border: 1px solid {ACCENT_COLOR}; */ /* Bỏ viền focus hoặc tùy chỉnh */
+                border: 1px solid {ACCENT_COLOR}; /* Viền cam khi focus */
             }}
             QDialog#SetDnsDialog QPushButton {{ /* Buttons inside SetDnsDialog (from QDialogButtonBox) */
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {BUTTON_SECONDARY_TEXT};
-                border: none; /* Bỏ viền nút trong dialog DNS */
+                border: 1px solid transparent; /* Viền trong suốt */
                 border-radius: 4px; 
                 padding: 6px 12px;
                 min-width: 70px;
@@ -1531,7 +1567,7 @@ class PcInfoAppQt(QMainWindow):
             }}
             QPushButton#NavToggleHeaderButton {{
                 background-color: transparent;
-                border: none;
+                border: none; /* Nút toggle nav không có viền */
                 padding: 5px; /* Adjust as needed */
             }}
             QPushButton#NavToggleHeaderButton:hover {{
@@ -1544,16 +1580,19 @@ class PcInfoAppQt(QMainWindow):
                 background-color: {ACCENT_COLOR};
                 color: white;
                 padding: 10px 18px; /* Lớn hơn một chút */
+                border-radius: 6px; /* Bo góc */
                 font-weight: bold;
             }}
             QPushButton#OneClickOptimizeButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
             QPushButton#GamingModeButton {{
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {TEXT_COLOR_PRIMARY};
+                border-radius: 6px; /* Bo góc */
             }}
             QPushButton#GamingModeButton:checked {{
                 background-color: {SECONDARY_COLOR}; /* Green when ON */
                 color: white;
+                border-radius: 6px; /* Bo góc */
                 font-weight: bold;
             }}
             QPushButton#GamingModeButton:hover {{ background-color: {BUTTON_SECONDARY_HOVER}; }}
@@ -1564,7 +1603,7 @@ class PcInfoAppQt(QMainWindow):
         self.button_exit.setStyleSheet(f"""
             QPushButton {{ 
                 background-color: {BUTTON_DANGER_BG};
-                color: white;
+                color: white; 
                 border: none;
             }}
             QPushButton:hover {{ background-color: {BUTTON_DANGER_HOVER}; }}
@@ -1573,7 +1612,7 @@ class PcInfoAppQt(QMainWindow):
         # self.button_export_csv.setStyleSheet(f"""
         #     QPushButton {{
         #         background-color: {BUTTON_EXPORT_BG}; 
-        #         color: white;
+        #         color: white; 
         #         border: none;
         #     }}
         #     QPushButton:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
@@ -1584,7 +1623,7 @@ class PcInfoAppQt(QMainWindow):
         if hasattr(self, 'button_refresh_dashboard_qt'):
             self.button_refresh_dashboard_qt.setStyleSheet(f"""
                 QPushButton {{ 
-                    background-color: {BUTTON_PRIMARY_BG};
+                    background-color: {BUTTON_PRIMARY_BG}; 
                     color: white;
                     border: none;
                     font-weight: bold;
@@ -1596,7 +1635,7 @@ class PcInfoAppQt(QMainWindow):
         common_save_button_style = f"""
             QPushButton {{
                 background-color: {ACCENT_COLOR}; 
-                color: white;
+                color: white; 
                 border: none;
             }}
             QPushButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
@@ -1618,10 +1657,10 @@ class PcInfoAppQt(QMainWindow):
         # Style for InfoCards on Home tab
         self.setStyleSheet(self.styleSheet() + f"""
             QGroupBox#InfoCard {{ /* Loại bỏ viền cho các card thông tin */
-                background-color: {GROUPBOX_BG}; /* Giữ lại màu nền */
-                border: 5px; /* Loại bỏ viền */
+                background-color: {FRAME_BG}; /* Nền trắng cho card */
+                border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho card */
                 border-radius: 8px; /* Giữ lại bo góc cho nền */
-                margin-top: 10px; /* Giảm margin-top so với QGroupBox chung */
+                margin-top: 15px; /* Điều chỉnh margin top cho card */
                 padding: 5px 5px 8px 5px;    /* Điều chỉnh padding (top, right, bottom, left) */
             }}
             QGroupBox#ResultsDisplayGroup {{ /* Đã có từ yêu cầu trước, đảm bảo nó không bị ảnh hưởng */
@@ -1630,7 +1669,7 @@ class PcInfoAppQt(QMainWindow):
                 padding: 0px;
             }}
             QProgressBar {{
-                border: none; /* Bỏ viền ProgressBar */
+                border: 1px solid {BORDER_COLOR_DARK}; /* Viền nhẹ cho ProgressBar */
                 border-radius: 5px;
                 text-align: center; /* Center the percentage text */
                 background-color: {INPUT_BG}; /* Background of the unfilled part */
@@ -2711,6 +2750,30 @@ class PcInfoAppQt(QMainWindow):
         thread_wu_status.task_error.connect(_on_wu_status_error)
         self.threads.append(thread_wu_status)
         thread_wu_status.start()
+
+    def run_remove_printer_qt(self, button_clicked):
+        printer_name, ok = QInputDialog.getText(self, "Gỡ Máy In", "Nhập tên chính xác của máy in cần gỡ:")
+        if ok and printer_name.strip():
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_optimize,
+                                        remove_printer, "optimize_remove_printer",
+                                        needs_wmi=True, task_args=[printer_name.strip()])
+        elif ok:
+            QMessageBox.warning(self, "Tên trống", "Bạn chưa nhập tên máy in.")
+
+    def run_clear_specific_print_queue_qt(self, button_clicked):
+        # Lấy danh sách máy in để người dùng chọn (nếu có thể)
+        # Hoặc đơn giản là yêu cầu nhập tên
+        printer_name, ok = QInputDialog.getText(self, "Xóa Hàng Đợi In Cụ Thể",
+                                                "Nhập tên máy in để xóa hàng đợi (để trống sẽ không làm gì):")
+        if ok and printer_name.strip():
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_optimize,
+                                        clear_print_queue, "optimize_clear_specific_queue",
+                                        needs_wmi=True, task_args=[printer_name.strip()])
+        elif ok and not printer_name.strip():
+            QMessageBox.information(self, "Thông báo", "Không có tên máy in nào được nhập.")
+        # Nếu nhấn Cancel (ok=False), không làm gì cả
+
+
 
 # Khối main để chạy thử trực tiếp file này (nếu cần)
 # if __name__ == "__main__":
