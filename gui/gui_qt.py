@@ -33,7 +33,10 @@ from core.pc_info_functions import ( # type: ignore
     get_startup_programs, run_ping_test, create_system_restore_point,
     # Giả định các hàm này sẽ được tạo trong core.pc_info_functions.py
     lookup_dns_address,      # Ví dụ: lookup_dns_address("google.com")
-    get_active_network_connections, # Ví dụ: netstat
+    get_active_network_connections, # Ví dụ: netstat    
+    # Các hàm cho tính năng (một số sẽ bị loại bỏ khỏi GUI)
+    run_cpu_benchmark, run_gpu_benchmark, run_memory_speed_test, run_disk_speed_test, # Cho tab Hiệu năng
+    optimize_windows_services, clean_registry_with_backup, # Cho tab Fix Hệ Thống
     get_disk_health_status,   # Hàm mới cho tình trạng ổ cứng
     get_battery_details,      # Hàm mới cho chi tiết pin
     set_dns_servers,          # Hàm mới để cấu hình DNS
@@ -46,7 +49,8 @@ from core.pc_info_manager import (
 )
 
 # --- Cấu hình Logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging nên được cấu hình ở main.py để tránh ghi đè hoặc xung đột
 
 # --- Constants for UI Styling (Có thể dùng QSS sau) ---
 DEFAULT_FONT_FAMILY = "Roboto"
@@ -99,6 +103,82 @@ TAB_BG_INACTIVE = "#90CAF9" # Light Blue 200 (Derived from Primary, same as BORD
 TAB_BG_ACTIVE = FRAME_BG    # White, same as pane
 TAB_TEXT_INACTIVE = TEXT_COLOR_PRIMARY
 TAB_TEXT_ACTIVE = ACCENT_COLOR # Orange for active tab text
+
+# HTML text colors (used in _update_display_widget)
+DEFAULT_TEXT_COLOR_HTML = TEXT_COLOR_PRIMARY
+ERROR_TEXT_COLOR_HTML = BUTTON_DANGER_BG
+
+# Toast Notification Colors
+TOAST_INFO_BG = "rgba(33, 150, 243, 220)"  # Blue (Primary Color with alpha)
+TOAST_SUCCESS_BG = "rgba(76, 175, 80, 220)" # Green (Secondary Color with alpha)
+TOAST_ERROR_BG = "rgba(244, 67, 54, 220)"   # Red (Danger Color with alpha)
+TOAST_TEXT_COLOR = "white"
+
+# --- Status Bar Colors ---
+STATUS_BAR_INFO_BG = "#BBDEFB"  # Light Blue 100
+STATUS_BAR_SUCCESS_BG = "#C8E6C9" # Green 100
+STATUS_BAR_WARNING_BG = "#FFF9C4" # Yellow 100
+STATUS_BAR_ERROR_BG = "#FFCDD2"   # Red 100
+STATUS_BAR_TEXT_COLOR = "#212121" # Dark Grey
+# class PcInfoAppQt(QMainWindow): # Forward declaration removed or ensure constants are in the main class
+
+
+class ToastNotification(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.ToolTip | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.hide)
+
+        self.default_style_sheet = f"""
+            QLabel {{
+                color: {TOAST_TEXT_COLOR};
+                background-color: {TOAST_INFO_BG};
+                padding: 10px 18px;
+                border-radius: 6px;
+                border: 1px solid rgba(0, 0, 0, 0.1); /* Thêm viền mờ nhẹ */
+                font-size: 10pt;
+                font-family: "{DEFAULT_FONT_FAMILY}";
+            }}
+        """
+        self.setStyleSheet(self.default_style_sheet)
+        self.setAlignment(Qt.AlignCenter)
+        self.hide()
+
+    def show_toast(self, message, duration_ms=5000, parent_widget=None, toast_type='info'):
+        self.setText(message)
+        self.adjustSize() # Điều chỉnh kích thước dựa trên nội dung mới
+
+        if parent_widget:
+            # Lấy tọa độ toàn cục và kích thước của parent_widget
+            # để định vị chính xác cửa sổ toast (là top-level)
+            parent_top_left_global = parent_widget.mapToGlobal(parent_widget.rect().topLeft())
+            parent_width = parent_widget.width()
+            parent_height = parent_widget.height()
+
+            margin = 20  # Khoảng cách từ các cạnh của parent_widget
+
+            # Tính toán vị trí cho góc dưới-phải của parent_widget
+            toast_x = parent_top_left_global.x() + parent_width - self.width() - margin
+            toast_y = parent_top_left_global.y() + parent_height - self.height() - margin
+            
+            # Đảm bảo toast không bị đẩy ra ngoài màn hình nếu parent_widget quá nhỏ hoặc ở gần cạnh màn hình
+            # (Có thể thêm logic kiểm tra screen geometry ở đây nếu cần thiết)
+
+            self.move(toast_x, toast_y)
+        # else:
+            # Nếu không có parent_widget, toast có thể xuất hiện ở góc màn hình
+            # hoặc dựa trên vị trí cuối cùng của nó.
+
+        bg_color = TOAST_INFO_BG if toast_type == 'info' else (TOAST_SUCCESS_BG if toast_type == 'success' else TOAST_ERROR_BG)
+        self.setStyleSheet(f"QLabel {{ color: {TOAST_TEXT_COLOR}; background-color: {bg_color}; padding: 10px 18px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); font-size: 10pt; font-family: \"{DEFAULT_FONT_FAMILY}\"; }}")
+        
+        self.show()
+        self.timer.start(duration_ms)
 
 # HTML text colors (used in _update_display_widget)
 DEFAULT_TEXT_COLOR_HTML = TEXT_COLOR_PRIMARY
@@ -173,6 +253,7 @@ class SetDnsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Cấu hình DNS")
+        self.setObjectName("SetDnsDialog") # Thêm objectName để styling
         self.setMinimumWidth(350)
 
         layout = QFormLayout(self)
@@ -202,6 +283,17 @@ class SetDnsDialog(QDialog):
         return primary, secondary if secondary else None # Trả về None nếu secondary trống
 
 class PcInfoAppQt(QMainWindow):
+    # Define common strings that represent unavailable or empty data
+    UNAVAILABLE_STR_CONSTANTS = {
+        NOT_AVAILABLE, # From core.pc_info_functions
+        NOT_FOUND,     # From core.pc_info_functions
+        "Unknown",
+        "None",        # String "None"
+        "",            # Empty string after strip
+        "N/A",
+        "Không xác định",
+        "Not Available"
+    }
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Thông Tin Cấu Hình PC")
@@ -228,6 +320,7 @@ class PcInfoAppQt(QMainWindow):
         self._init_timers() # Khởi tạo các QTimer cho debouncing
         self._create_widgets()
         self._apply_styles()
+        self.toast_notifier = ToastNotification(self) # Khởi tạo toast notifier
 
         self.fetch_pc_info_threaded()
 
@@ -510,8 +603,8 @@ class PcInfoAppQt(QMainWindow):
         self.card_disks_info = self._create_info_card("Ổ Đĩa") # For multiple disks
         self.card_gpus_info = self._create_info_card("Card Đồ Họa (GPU)") # For multiple GPUs
         self.card_screens_info = self._create_info_card("Màn Hình") # For multiple screens
-        self.card_disk_health_info = self._create_info_card("Tình Trạng Ổ Cứng (S.M.A.R.T)")
-        self.card_battery_info = self._create_info_card("Thông Tin Pin (Laptop)")
+        # self.card_disk_health_info = self._create_info_card("Tình Trạng Ổ Cứng (S.M.A.R.T)") # Removed as per request
+        # self.card_battery_info = self._create_info_card("Thông Tin Pin (Laptop)") # Removed as per request
 
 
         self.home_cards_layout.addWidget(self.card_general_info, 0, 0)
@@ -519,11 +612,11 @@ class PcInfoAppQt(QMainWindow):
         self.home_cards_layout.addWidget(self.card_cpu_info, 1, 0)
         self.home_cards_layout.addWidget(self.card_ram_info, 1, 1)
         self.home_cards_layout.addWidget(self.card_mainboard_info, 2, 0)
-        self.home_cards_layout.addWidget(self.card_disk_health_info, 2, 1) # Disk health next to mainboard
-        self.home_cards_layout.addWidget(self.card_disks_info, 3, 0)    # Physical disks
-        self.home_cards_layout.addWidget(self.card_battery_info, 3, 1)  # Battery info
-        self.home_cards_layout.addWidget(self.card_gpus_info, 4, 0, 1, 2) # Span 2 columns for GPUs
-        self.home_cards_layout.addWidget(self.card_screens_info, 5, 0, 1, 2) # Span 2 columns for Screens
+        # self.home_cards_layout.addWidget(self.card_disk_health_info, 2, 1) # Removed
+        self.home_cards_layout.addWidget(self.card_disks_info, 2, 1)    # Physical disks moved to (2,1)
+        # self.home_cards_layout.addWidget(self.card_battery_info, 3, 1)  # Removed
+        self.home_cards_layout.addWidget(self.card_gpus_info, 3, 0, 1, 2) # Span 2 columns for GPUs, moved to row 3
+        self.home_cards_layout.addWidget(self.card_screens_info, 4, 0, 1, 2) # Span 2 columns for Screens, moved to row 4
 
         cards_scroll_area.setWidget(cards_container_widget)
         layout.addWidget(cards_scroll_area, 1) # Add scroll area to the main tab layout
@@ -605,7 +698,7 @@ class PcInfoAppQt(QMainWindow):
         self._add_utility_button(diag_layout, "Xem Dung Lượng Ổ Đĩa", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_disk_partitions_usage, "utility_disk_usage", needs_wmi=True, result_type="table"))
         self._add_utility_button(diag_layout, "Tạo Báo Cáo Pin (Laptop)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, generate_battery_report, "utility_battery_report", needs_wmi=False))
         self._add_utility_button(diag_layout, "Kiểm tra kích hoạt Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, check_windows_activation_status, "utility_win_activation", needs_wmi=False))
-        self._add_utility_button(diag_layout, "Xem Event Log Gần Đây (24h)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_recent_event_logs, "utility_event_logs", needs_wmi=True, wmi_namespace="root\\CIMV2", task_args=[24, 25], result_type="table"))
+        self._add_utility_button(diag_layout, "Xem Event Log Gần Đây (24h)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_recent_event_logs, "utility_event_logs", needs_wmi=True, wmi_namespace="root\\CIMV2", result_type="table"))
         self._add_utility_button(diag_layout, "Kiểm Tra Phiên Bản Phần Mềm", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_installed_software_versions, "utility_software_versions_wmi", needs_wmi=True, result_type="table"))
         self._add_utility_button(diag_layout, "Ứng Dụng Người Dùng Đã Cài", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_installed_software_versions, "utility_software_versions_reg", needs_wmi=False, result_type="table"))
         self.utilities_actions_layout.addWidget(group_diag)
@@ -626,6 +719,7 @@ class PcInfoAppQt(QMainWindow):
         self._add_utility_button(diag_layout, "Kiểm Tra Nhiệt Độ Hệ Thống", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_system_temperatures, "utility_temps", needs_wmi=True, wmi_namespace="root\\WMI", result_type="table"))
         self._add_utility_button(diag_layout, "Liệt Kê Tiến Trình Đang Chạy", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, get_running_processes, "utility_processes", needs_wmi=False, result_type="table"))
         
+        self._add_utility_button(diag_layout, "Kiểm tra Tốc độ Ổ cứng", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_utilities, run_disk_speed_test, "utility_disk_speed_test", needs_wmi=False, result_type="table")) # Đổi sang hiển thị dạng bảng
         self.utilities_actions_layout.addStretch(1) # Đẩy các group lên trên
         scroll_area_actions.setWidget(actions_widget_container)
         left_column_layout.addWidget(scroll_area_actions) # Add scroll area below search bar
@@ -724,6 +818,14 @@ class PcInfoAppQt(QMainWindow):
         self._add_utility_button(fix_update_layout, "Tạo Điểm Khôi Phục Hệ Thống", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, create_system_restore_point, "fix_create_restore_point", needs_wmi=False))
         self._add_utility_button(fix_update_layout, "Cập Nhật Phần Mềm (Winget)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, update_all_winget_packages, "fix_winget_update", needs_wmi=False))
         self.fixes_actions_layout.addWidget(group_fix_update)
+
+        # Group 3: Tối ưu Nâng Cao
+        group_advanced_optimization = QGroupBox("Tối ưu Nâng Cao")
+        group_advanced_optimization.setFont(self.h2_font)
+        advanced_opt_layout = QVBoxLayout(group_advanced_optimization)        
+        self._add_utility_button(advanced_opt_layout, "Tối ưu Dịch Vụ Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, optimize_windows_services, "fix_optimize_services", needs_wmi=False))
+        self._add_utility_button(advanced_opt_layout, "Dọn Dẹp Registry (Có Sao Lưu)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, clean_registry_with_backup, "fix_clean_registry", needs_wmi=False))
+        self.fixes_actions_layout.addWidget(group_advanced_optimization)
 
         self.fixes_actions_layout.addStretch(1)
         scroll_area_actions.setWidget(actions_widget_container)
@@ -1041,6 +1143,73 @@ class PcInfoAppQt(QMainWindow):
                 background-color: {BUTTON_SECONDARY_BG};
                 padding: 4px;
                 border: 1px solid {BORDER_COLOR_LIGHT};
+                font-weight: bold; /* Đã có, giữ lại */
+            }}
+            /* Styling for QMessageBox */
+            QMessageBox {{
+                background-color: {WINDOW_BG};
+                /* dialogTitleBarButtons-icon-size: 0px; */ /* Hide title bar buttons if desired, tricky */
+            }}
+            QMessageBox QLabel {{ /* Message text */
+                color: {TEXT_COLOR_PRIMARY};
+                font-size: {BODY_FONT_SIZE}pt;
+                background-color: transparent;
+            }}
+            QMessageBox QPushButton {{ /* Buttons in QMessageBox */
+                background-color: {BUTTON_SECONDARY_BG};
+                color: {BUTTON_SECONDARY_TEXT};
+                border: 1px solid {BORDER_COLOR_DARK};
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 70px;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {BUTTON_SECONDARY_HOVER};
+            }}
+            QMessageBox QPushButton:pressed {{
+                background-color: {BUTTON_SECONDARY_PRESSED};
+            }}
+            /* Styling for SetDnsDialog */
+            QDialog#SetDnsDialog {{
+                background-color: {WINDOW_BG};
+            }}
+            QDialog#SetDnsDialog QLabel {{
+                color: {TEXT_COLOR_PRIMARY};
+                background-color: transparent;
+            }}
+            QDialog#SetDnsDialog QLineEdit {{
+                background-color: {INPUT_BG};
+                border: 1px solid {INPUT_BORDER_COLOR};
+                border-radius: 4px;
+                padding: 5px;
+                color: {TEXT_COLOR_PRIMARY};
+            }}
+            QDialog#SetDnsDialog QLineEdit:focus {{
+                border-color: {ACCENT_COLOR};
+            }}
+            QDialog#SetDnsDialog QPushButton {{ /* Buttons inside SetDnsDialog (from QDialogButtonBox) */
+                background-color: {BUTTON_SECONDARY_BG};
+                color: {BUTTON_SECONDARY_TEXT};
+                border: 1px solid {BORDER_COLOR_DARK};
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 70px;
+            }}
+            QDialog#SetDnsDialog QPushButton:hover {{
+                background-color: {BUTTON_SECONDARY_HOVER};
+            }}
+            QDialog#SetDnsDialog QPushButton:pressed {{
+                background-color: {BUTTON_SECONDARY_PRESSED};
+            }}
+            /* Style the OK button in SetDnsDialog as a primary button */
+            QDialog#SetDnsDialog QPushButton[text="OK"], QDialog#SetDnsDialog QPushButton[text="&OK"] {{
+                background-color: {BUTTON_PRIMARY_BG};
+                color: white;
+            }}
+            QDialog#SetDnsDialog QPushButton[text="OK"]:hover, QDialog#SetDnsDialog QPushButton[text="&OK"]:hover {{
+                background-color: {BUTTON_PRIMARY_HOVER};
+            }}
+            QDialog#SetDnsDialog QPushButton[text="OK"]:pressed, QDialog#SetDnsDialog QPushButton[text="&OK"]:pressed {{
                 font-weight: bold;
             }}
         """)
@@ -1102,28 +1271,55 @@ class PcInfoAppQt(QMainWindow):
 
         # Style for InfoCards on Home tab
         self.setStyleSheet(self.styleSheet() + f"""
-            QGroupBox#InfoCard {{
-                border: 1px solid {BORDER_COLOR_DARK}; /* Darker border for cards */
-            }}""")
+            QGroupBox#InfoCard {{ /* Loại bỏ viền cho các card thông tin */
+                background-color: {GROUPBOX_BG}; /* Giữ lại màu nền */
+                border: 5px; /* Loại bỏ viền */
+                border-radius: 8px; /* Giữ lại bo góc cho nền */
+                margin-top: 10px; /* Giảm margin-top so với QGroupBox chung */
+                padding: 5px 5px 8px 5px;    /* Điều chỉnh padding (top, right, bottom, left) */
+            }}
+            QGroupBox#ResultsDisplayGroup {{ /* Đã có từ yêu cầu trước, đảm bảo nó không bị ảnh hưởng */
+                border: 5px;
+                margin-top: 5px;
+                padding: 0px;
+            }}
+        """)
+        self._update_status_bar("Ứng dụng sẵn sàng.", "info") # Set initial status
+
+    def _update_status_bar(self, message, status_type="info"):
+        """Cập nhật nội dung và màu sắc của thanh trạng thái."""
+        parent_for_toast = self # Mặc định là cửa sổ chính (QMainWindow)
+        target_parent_is_visible = self.isVisible() # Kiểm tra cửa sổ chính có hiển thị không
+
+        current_page_widget = self.pages_stack.currentWidget()
+        if current_page_widget == self.page_utilities and hasattr(self, 'stacked_widget_results_utilities'):
+            parent_for_toast = self.stacked_widget_results_utilities # "Ổ thông tin kết quả" của tab Tiện Ích
+            target_parent_is_visible = parent_for_toast.isVisible() and self.isVisible()
+        elif current_page_widget == self.page_fixes and hasattr(self, 'stacked_widget_results_fixes'):
+            parent_for_toast = self.stacked_widget_results_fixes # "Ổ thông tin kết quả" của tab Fix Hệ Thống
+            target_parent_is_visible = parent_for_toast.isVisible() and self.isVisible()
+
+        # if target_parent_is_visible: # Chỉ hiển thị toast nếu parent dự kiến của nó đang hiển thị
+            # self.toast_notifier.show_toast(message, parent_widget=parent_for_toast, toast_type=status_type)
+
 
     def _update_display_widget(self, text_widget, content, is_error=False):
         # content is now assumed to be an HTML string, or plain text that needs escaping by the caller.
         # For plain text messages passed directly (e.g. "Đang tải..."), they should be escaped by the caller.
+        # For content generated by _format_task_result_for_display_generic or _populate_card, it's already HTML.
         # For content generated by _format_task_result_for_display_generic or _populate_card, it's already HTML.
         text_widget.clear()
 
         final_html_content = content # Assume content is already HTML or properly escaped plain text formatted as HTML
 
         # Determine text color based on is_error flag or keywords in the content.
-        # The keyword check should be cautious if 'Lỗi' can be part of a non-error label.
         # The is_error flag is the most reliable way to indicate an error.
-        text_color_to_use = DEFAULT_TEXT_COLOR_HTML
+        text_color_to_use = DEFAULT_TEXT_COLOR_HTML # Access module-level constant
         if is_error:
-            text_color_to_use = ERROR_TEXT_COLOR_HTML
-        elif isinstance(content, str) and any(err_keyword in content for err_keyword in ["Lỗi", "Error", "Không thể"]):
-             # Check if it's not part of a bold tag like "<b>Lỗi:</b>"
-            if not any(f"<b>{err_keyword}</b>" in content for err_keyword in ["Lỗi", "Error", "Không thể"]):
-                text_color_to_use = ERROR_TEXT_COLOR_HTML
+            text_color_to_use = ERROR_TEXT_COLOR_HTML # Access module-level constant
+        # Removed the secondary keyword check for error color; rely on is_error flag.
+        # The _on_task_error method correctly sets is_error=True.
+
 
         if isinstance(text_widget, QLabel):
             text_widget.setTextFormat(Qt.RichText)
@@ -1203,8 +1399,7 @@ class PcInfoAppQt(QMainWindow):
         card_widgets = [
             self.card_general_info, self.card_os_info, self.card_cpu_info,
             self.card_ram_info, self.card_mainboard_info, self.card_disks_info,
-            self.card_gpus_info, self.card_screens_info,
-            self.card_disk_health_info, self.card_battery_info # Thêm card mới
+            self.card_gpus_info, self.card_screens_info
         ]
         for card in card_widgets:
             content_label = card.findChild(QLabel)
@@ -1259,22 +1454,39 @@ class PcInfoAppQt(QMainWindow):
             self._populate_card(self.card_mainboard_info, pc_data.get("Mainboard", {}), [("Nhà sản xuất", "NSX"), ("Kiểu máy", "Model"), ("Số Sê-ri", "Serial")])
             
             # For lists like disks, gpus, screens
-            disk_keys_map = [("Kiểu máy", "Model"), ("Dung lượng (GB)", "Size"), ("Giao tiếp", "Interface"), ("Loại phương tiện", "Type")]
+            disk_keys_map = [("Kiểu máy", "Model"), ("Dung lượng (GB)", "Size"), ("Giao tiếp", "Interface"), ("Loại phương tiện", "Loại")]
             self._populate_card(self.card_disks_info, pc_data.get("Ổ đĩa", [{"Thông tin": NOT_FOUND}]), disk_keys_map)
 
-            gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Res"), ("Phiên bản Driver", "Driver Ver"), ("Ngày Driver", "Driver Date")]
-            # Lấy cả ghi chú nếu có
-            raw_gpu_data = pc_data.get("Card đồ họa (GPU)", [{"Thông tin": NOT_FOUND}])
-            gpu_data_to_display = [gpu for gpu in raw_gpu_data if "Ghi chú" not in gpu]
-            gpu_note = next((gpu.get("Ghi chú") for gpu in raw_gpu_data if "Ghi chú" in gpu), None)
-            if not gpu_data_to_display and raw_gpu_data and "Lỗi" not in raw_gpu_data[0] and "Thông tin" not in raw_gpu_data[0] and not gpu_note : # Nếu chỉ có ghi chú, không hiển thị là "Not Found"
-                 gpu_data_to_display = [{"Thông tin": NOT_FOUND}] # Đảm bảo hiển thị gì đó nếu chỉ có note
-            self._populate_card(self.card_gpus_info, pc_data.get("Card đồ họa (GPU)", []), gpu_keys_map)
-            if gpu_note: # Thêm ghi chú vào cuối card GPU nếu có
-                gpu_card_label = self.card_gpus_info.findChild(QLabel)
-                if gpu_card_label: gpu_card_label.setText(gpu_card_label.text() + f"<br><br><i><b>Ghi chú:</b> {html.escape(gpu_note)}</i>")
+            # --- Card Đồ Họa (GPU) - Logic mới ---
+            gpu_keys_map = [("Tên", "Tên"), ("Nhà sản xuất", "NSX"), ("Tổng bộ nhớ (MB)", "VRAM"), ("Độ phân giải hiện tại", "Đ.P.Giải"), ("Phiên bản Driver", "Driver Ver"), ("Ngày Driver", "Ngày Driver")]
+            raw_gpu_data_from_pc = pc_data.get("Card đồ họa (GPU)", [])
 
-            screen_keys_map = [("Tên", "Tên"), ("Độ phân giải", "Res"), ("Trạng thái", "Status")]
+            valid_gpu_entries = []
+            gpu_note_text = None
+            actual_gpu_data_keys_for_check = [k_map[0] for k_map in gpu_keys_map]
+
+            if isinstance(raw_gpu_data_from_pc, list):
+                for gpu_item in raw_gpu_data_from_pc:
+                    if isinstance(gpu_item, dict):
+                        # Kiểm tra xem có dữ liệu hợp lệ nào không
+                        has_valid_data = False
+                        for data_key in actual_gpu_data_keys_for_check:
+                            if not self._is_value_unavailable(gpu_item.get(data_key)):
+                                has_valid_data = True
+                                break
+                        if has_valid_data:
+                            valid_gpu_entries.append(gpu_item)
+            
+            gpu_card_label = self.card_gpus_info.findChild(QLabel)
+            if gpu_card_label:
+                if valid_gpu_entries:
+                    self._populate_card(self.card_gpus_info, valid_gpu_entries, gpu_keys_map) # Ghi chú đã bị loại bỏ khỏi hàm core
+                else: # Không có GPU hợp lệ và không có ghi chú
+                    self._update_display_widget(gpu_card_label, html.escape(NOT_FOUND))
+
+            screen_keys_map = [("Tên", "Tên"), ("Độ phân giải (pixels)", "Đ.P.Giải (px)"), 
+                               ("Tỷ lệ khung hình", "Tỷ lệ"), ("Kích thước (đường chéo)", "K.Thước"),
+                              ("Trạng thái", "Tr.Thái"),] # Comma added here
             self._populate_card(self.card_screens_info, screen_data, screen_keys_map)
             
             # Update greeting label with user name
@@ -1286,15 +1498,17 @@ class PcInfoAppQt(QMainWindow):
             # Kích hoạt nút "Xuất Báo Cáo PC" nếu đang ở tab Trang Chủ
             # Populate new cards from SystemCheckUtilities
             system_checks = self.pc_info_dict.get("SystemCheckUtilities", {})
-            disk_health_keys_map = [("Model", "Model"), ("Kích thước (GB)", "Size"), ("DeviceID", "DeviceID"), ("Trạng thái (Win32)", "Status"), ("Dự đoán Lỗi (S.M.A.R.T.)", "Predict Fail"), ("Mã lý do (S.M.A.R.T.)", "Reason")]
-            self._populate_card(self.card_disk_health_info, system_checks.get("Tình trạng ổ cứng (S.M.A.R.T.)", [{"Thông tin": NOT_FOUND}]), disk_health_keys_map)
+            # self._update_status_bar("Lấy thông tin PC thành công.", "success") # Moved slightly down
+            # disk_health_keys_map = [("Model", "Model"), ("Kích thước (GB)", "Size"), ("DeviceID", "DeviceID"), ("Trạng thái (Win32)", "Status"), ("Dự đoán Lỗi (S.M.A.R.T.)", "Predict Fail"), ("Mã lý do (S.M.A.R.T.)", "Reason")]
+            # self._populate_card(self.card_disk_health_info, system_checks.get("Tình trạng ổ cứng (S.M.A.R.T.)", [{"Thông tin": NOT_FOUND}]), disk_health_keys_map) # Removed
 
-            battery_keys_map = [("Tên Pin", "Tên"), ("Trạng thái", "Status"), ("Mức pin ước tính (%)", "Charge %"), ("Sức khỏe Pin Ước tính (%)", "Health %"), ("Dung lượng Thiết kế (mWh)", "Design Cap."), ("Dung lượng Sạc đầy (mWh)", "Full Cap.")]
-            self._populate_card(self.card_battery_info, system_checks.get("Chi tiết Pin (Laptop)", [{"Thông tin": NOT_FOUND}]), battery_keys_map)
+            # battery_keys_map = [("Tên Pin", "Tên"), ("Trạng thái", "Status"), ("Mức pin ước tính (%)", "Charge %"), ("Sức khỏe Pin Ước tính (%)", "Health %"), ("Dung lượng Thiết kế (mWh)", "Design Cap."), ("Dung lượng Sạc đầy (mWh)", "Full Cap.")]
+            # self._populate_card(self.card_battery_info, system_checks.get("Chi tiết Pin (Laptop)", [{"Thông tin": NOT_FOUND}]), battery_keys_map) # Removed
 
 
             if self.pages_stack.currentWidget() == self.page_home:
                 self.button_save_active_tab_result.setEnabled(True)
+        
     def _on_task_error(self, task_name, error_message):
         logging.error(f"Error in task '{task_name}': {error_message}")
         is_fetch_pc_info = task_name == "fetch_pc_info"
@@ -1307,13 +1521,13 @@ class PcInfoAppQt(QMainWindow):
             card_widgets = [
                 self.card_general_info, self.card_os_info, self.card_cpu_info, 
                 self.card_ram_info, self.card_mainboard_info, self.card_disks_info, 
-                self.card_gpus_info, self.card_screens_info,
-                self.card_disk_health_info, self.card_battery_info # Thêm card mới
+                self.card_gpus_info, self.card_screens_info
             ]
             for card in card_widgets:
                 content_label = card.findChild(QLabel)
                 if content_label:
                     self._update_display_widget(content_label, html.escape(error_text_for_cards).replace("\n", "<br>"), is_error=True)
+            self._update_status_bar(f"Lỗi lấy thông tin PC: {error_message[:100]}...", "error") # Thêm dòng này
             if self.pages_stack.currentWidget() == self.page_home:
                 self.button_save_active_tab_result.setEnabled(False)
         elif is_utility_task:
@@ -1322,11 +1536,13 @@ class PcInfoAppQt(QMainWindow):
             text_edit_target = self.stacked_widget_results_utilities.widget(0).findChild(QTextEdit)
             self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
             self._update_save_button_state_for_tab_content(self.stacked_widget_results_utilities)
+            self._update_status_bar(f"Lỗi tác vụ tiện ích: {error_message[:100]}...", "error")
         elif is_fix_task:
             self.stacked_widget_results_fixes.setCurrentIndex(0)
             text_edit_target = self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit)
             self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
             self._update_save_button_state_for_tab_content(self.stacked_widget_results_fixes)
+            self._update_status_bar(f"Lỗi tác vụ sửa lỗi: {error_message[:100]}...", "error")
     def toggle_notes_visibility(self, checked):
         """Hiện hoặc ẩn ô Ghi chú dựa vào trạng thái checkbox."""
         self.label_notes_qt.setVisible(checked)
@@ -1363,7 +1579,9 @@ class PcInfoAppQt(QMainWindow):
                 network_instruction = "\\\\pc-it-08\\Tools\\User"
                 QMessageBox.information(self, "Thành Công", f"Thông tin đã được lưu thành công vào file:\n{file_path}\n\n"
                                           f"Vui lòng copy file này và dán vào thư mục bằng cách nhấn Win+R "
-                                          f"và nhập: {network_instruction}")
+                                          f"và nhập: {network_instruction}") # type: ignore
+                self._update_status_bar(f"Xuất báo cáo PC thành công: {os.path.basename(file_path)}", "success")
+        
         except ValueError as ve:
             QMessageBox.critical(self, "Thiếu thông tin", str(ve))
         except (IOError, RuntimeError) as save_e:
@@ -1371,6 +1589,8 @@ class PcInfoAppQt(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi xuất file: {e}")
             logging.exception("Lỗi không xác định khi xuất file:")
+            self._update_status_bar(f"Lỗi khi xuất báo cáo PC: {str(e)[:100]}...", "error")
+
 
     def _get_table_content_as_text(self, table_widget):
         if not table_widget: return ""
@@ -1412,9 +1632,13 @@ class PcInfoAppQt(QMainWindow):
                         row_data = [table_to_export.item(r, c).text() if table_to_export.item(r, c) else "" for c in range(table_to_export.columnCount())]
                         writer.writerow(row_data)
                 QMessageBox.information(self, "Xuất CSV Thành Công", f"Dữ liệu bảng đã được xuất ra:\n{file_path}")
+                self._update_status_bar(f"Xuất CSV thành công: {os.path.basename(file_path)}", "success")
+            
             except Exception as e:
                 QMessageBox.critical(self, "Lỗi Xuất CSV", f"Không thể xuất CSV: {e}")
                 logging.exception("Lỗi khi xuất CSV:")
+                self._update_status_bar(f"Lỗi xuất CSV: {str(e)[:100]}...", "error")
+
 
     def _run_task_in_thread_qt(self, button_clicked, target_stacked_widget, task_function, task_name_prefix, needs_wmi=False, wmi_namespace="root\\CIMV2", task_args=None, result_type="text"):
         task_name = f"{task_name_prefix}_{task_function.__name__}_{datetime.now().strftime('%H%M%S%f')}" # Unique task name
@@ -1424,6 +1648,10 @@ class PcInfoAppQt(QMainWindow):
         text_display_for_loading = target_stacked_widget.widget(0).findChild(QTextEdit)
         if text_display_for_loading:
             self._update_display_widget(text_display_for_loading, html.escape(f"Đang thực hiện: {task_function.__name__}..."))
+        self._update_status_bar(f"Đang thực hiện: {task_function.__name__}...", "info")
+        
+        # if task_function.__name__ == "run_disk_speed_test":
+            # self.toast_notifier.show_toast("Đang kiểm tra tốc độ ổ cứng, vui lòng đợi...", parent_widget=target_stacked_widget, duration_ms=5000) # Đã được xử lý bởi _update_status_bar
         target_stacked_widget.setCurrentIndex(0) # Show text display during loading
 
         # Clear previous search in the target_widget before running a new task
@@ -1442,11 +1670,10 @@ class PcInfoAppQt(QMainWindow):
         # Đảm bảo task_args là một tuple để unpack an toàn
         if task_args is None:
             actual_args_for_thread_tuple = tuple()
-        elif isinstance(task_args, (list, tuple)):
-            actual_args_for_thread_tuple = tuple(task_args)
-        else: # Nếu task_args là một giá trị đơn lẻ, coi nó là một tuple một phần tử
+        elif not isinstance(task_args, (list, tuple)): # If it's a single non-list/tuple arg
             actual_args_for_thread_tuple = (task_args,)
-            
+        else: # It's already a list or tuple
+            actual_args_for_thread_tuple = tuple(task_args)
         thread = WorkerThread(task_function, task_name, needs_wmi, wmi_namespace,
                                 *actual_args_for_thread_tuple,
                                 button_to_manage=button_clicked,
@@ -1494,52 +1721,91 @@ class PcInfoAppQt(QMainWindow):
                 result_type = "text" # Force text display
         
         if result_type == "text":
+            if task_name.startswith("utility_disk_speed_test_run_disk_speed_test"):
+                self.toast_notifier.show_toast("Kiểm tra tốc độ ổ cứng hoàn tất.", parent_widget=self, toast_type='success')
+
             text_edit_target = target_stacked_widget.widget(0).findChild(QTextEdit) # TextEdit is in a QGroupBox
             display_text = self._format_task_result_for_display_generic(data)
             self._update_display_widget(text_edit_target, display_text)
             target_stacked_widget.setCurrentIndex(0) # Switch to text view
             # self.button_export_csv.setVisible(False) # Button removed
-
+        self._update_status_bar(f"Hoàn thành tác vụ: {task_name.split('_')[1] if '_' in task_name else task_name}", "success")
         self._update_save_button_state_for_tab_content(target_stacked_widget)
+    
+    # Removed redundant _on_task_error definition. The one at line 1014 is used.
+
+    def _is_value_unavailable(self, val):
+        """Kiểm tra xem một giá trị có được coi là không khả dụng hoặc trống để hiển thị không."""
+        if val is None:
+            return True
+        # Kiểm tra xem biểu diễn chuỗi, sau khi loại bỏ khoảng trắng, có trống hoặc là một hằng số không khả dụng không
+        s_val = str(val).strip() # Điều này xử lý nếu val đã là một chuỗi
+        if not s_val or s_val in self.UNAVAILABLE_STR_CONSTANTS: # Sử dụng hằng số của lớp
+            return True
+        return False
+
+    def _format_details_content_html(self, details_content):
+        """Hàm trợ giúp để định dạng phần 'details' của một từ điển trạng thái thành HTML."""
+        if self._is_value_unavailable(details_content):
+            return ""
+
+        temp_details_accumulator = []
+        has_any_detail_content = False
+
+        if isinstance(details_content, dict):
+            for k_detail, v_detail_raw in details_content.items():
+                if not self._is_value_unavailable(v_detail_raw):
+                    has_any_detail_content = True
+                    if k_detail == 'errors_list' and isinstance(v_detail_raw, list) and v_detail_raw:
+                        temp_details_accumulator.append(f"  <b>Lỗi chi tiết:</b>")
+                        valid_errors = [e_item for e_item in v_detail_raw if not self._is_value_unavailable(e_item)]
+                        for err_item in valid_errors[:5]:
+                            temp_details_accumulator.append(f"    - {html.escape(str(err_item))}")
+                        if len(valid_errors) > 5:
+                            temp_details_accumulator.append("    ...")
+                    elif k_detail in ['deleted_files_count', 'deleted_folders_count', 'total_size_freed_mb', 
+                                      'files_found', 'folders_found', 'total_size_mb', 'bytes_freed']: # Thêm các khóa đã biết
+                        display_key = html.escape(str(k_detail).replace('_', ' ').title())
+                        temp_details_accumulator.append(f"  <b>{display_key}:</b> {html.escape(str(v_detail_raw))}")
+                    else: # Khóa-giá trị chung cho các chi tiết khác
+                        temp_details_accumulator.append(f"  <b>{html.escape(str(k_detail))}:</b> {html.escape(str(v_detail_raw))}")
+        elif isinstance(details_content, list):
+            processed_list_items = [f"  - {html.escape(str(d_item))}" for d_item in details_content if not self._is_value_unavailable(d_item)]
+            if processed_list_items:
+                temp_details_accumulator.extend(processed_list_items)
+                has_any_detail_content = True
+        else: # Chuỗi chi tiết chung
+            if not self._is_value_unavailable(details_content): # Kiểm tra lại nếu là chuỗi đơn giản
+                temp_details_accumulator.append(f"  {html.escape(str(details_content))}")
+                has_any_detail_content = True
+
+        if has_any_detail_content:
+            return "<br><b>Chi tiết:</b><br>" + "<br>".join(temp_details_accumulator)
+        return ""
     def _format_task_result_for_display_generic(self, result_data):
-        """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold."""
         """Định dạng kết quả tác vụ thành chuỗi, sử dụng ** cho bold.
            Bỏ qua các giá trị không khả dụng hoặc rỗng. Output is HTML."""
-        UNAVAILABLE_STR_CONSTANTS = [NOT_AVAILABLE, NOT_FOUND, ERROR_WMI_CONNECTION]
-
-        def is_value_unavailable(val):
-            if val is None:
-                return True
-            # Check if the value itself is one of the string constants
-            if isinstance(val, str) and val in UNAVAILABLE_STR_CONSTANTS:
-                return True
-            # Check if the string representation, when stripped, is empty or an unavailable constant
-            s_val = str(val).strip()
-            if s_val == "" or s_val in UNAVAILABLE_STR_CONSTANTS:
-                return True
-            return False
-
-        if is_value_unavailable(result_data):
-            return html.escape(NOT_AVAILABLE) # Return escaped "Không khả dụng"
+        if self._is_value_unavailable(result_data):
+            return html.escape(str(NOT_AVAILABLE))
 
         html_lines = []
         if isinstance(result_data, list):
             if not result_data:
                 return html.escape("Tác vụ hoàn thành, không có mục nào được trả về.")
             for item in result_data:
-                if is_value_unavailable(item):
+                if self._is_value_unavailable(item):
                     continue # Skip unavailable items in a list
                 elif isinstance(item, dict):
                     item_lines = []
                     for k, v_raw in item.items():
-                        if not is_value_unavailable(v_raw):
+                        if not self._is_value_unavailable(v_raw): # Corrected call
                             item_lines.append(f"  <b>{html.escape(str(k))}:</b> {html.escape(str(v_raw))}")
                     if item_lines: # Only add if there's something to show for this item
                         html_lines.append("<br>".join(item_lines))
                 else:
                     html_lines.append(html.escape(str(item)))
             if not html_lines:
-                return html.escape("Không có thông tin khả dụng.")
+                return html.escape(str(NOT_AVAILABLE)) # Or "Không có thông tin khả dụng."
             return "<br>---<br>".join(html_lines)
 
         elif isinstance(result_data, dict):
@@ -1550,60 +1816,29 @@ class PcInfoAppQt(QMainWindow):
                 status_val = result_data.get('status', 'N/A')
                 message_val = result_data['message']
 
-                if not is_value_unavailable(status_val):
+                if not self._is_value_unavailable(status_val):
                     html_lines.append(f"<b>Trạng thái:</b> {html.escape(str(status_val))}")
-                if not is_value_unavailable(message_val):
+                if not self._is_value_unavailable(message_val):
                     html_lines.append(f"<b>Thông điệp:</b> {html.escape(str(message_val))}")
                 
-                if "details" in result_data and not is_value_unavailable(result_data['details']):
-                    details_content = result_data['details']
-                    # Accumulator for the actual content of the details section
-                    temp_details_accumulator = []
-                    has_any_detail_content = False
+                if "details" in result_data:
+                    formatted_details = self._format_details_content_html(result_data['details'])
+                    if formatted_details:
+                        html_lines.append(formatted_details)
 
-                    if isinstance(details_content, dict):
-                        for k_detail, v_detail_raw in details_content.items():
-                            if not is_value_unavailable(v_detail_raw):
-                                has_any_detail_content = True
-                                if k_detail == 'errors_list' and isinstance(v_detail_raw, list) and v_detail_raw:
-                                    temp_details_accumulator.append(f"  <b>Lỗi chi tiết:</b>")
-                                    errors_shown_count = 0
-                                    for err_item in v_detail_raw:
-                                        if not is_value_unavailable(err_item) and errors_shown_count < 5:
-                                            temp_details_accumulator.append(f"    - {html.escape(str(err_item))}")
-                                            errors_shown_count += 1
-                                    if sum(1 for e_item in v_detail_raw if not is_value_unavailable(e_item)) > 5:
-                                        temp_details_accumulator.append("    ...")
-                                elif k_detail in ['deleted_files_count', 'deleted_folders_count', 'total_size_freed_mb']:
-                                    temp_details_accumulator.append(f"  <b>{html.escape(str(k_detail.replace('_', ' ').capitalize()))}:</b> {html.escape(str(v_detail_raw))}")
-                                else:
-                                    temp_details_accumulator.append(f"  <b>{html.escape(str(k_detail))}:</b> {html.escape(str(v_detail_raw))}")
-                    elif isinstance(details_content, list): # if details is a list of strings
-                        processed_list_items = [f"  - {html.escape(str(d_item))}" for d_item in details_content if not is_value_unavailable(d_item)]
-                        if processed_list_items:
-                            temp_details_accumulator.extend(processed_list_items)
-                            has_any_detail_content = True
-                    else: # Generic details string
-                        if not is_value_unavailable(details_content):
-                            temp_details_accumulator.append(f"  {html.escape(str(details_content))}")
-                            has_any_detail_content = True
-                    if has_any_detail_content:
-                        html_lines.append("<br><b>Chi tiết:</b>") # Add the "Chi tiết:" header
-                        html_lines.append("<br>".join(temp_details_accumulator)) # Add the collected detail items
-                if "path" in result_data and not is_value_unavailable(result_data['path']):
-                    html_lines.append(f"<br><b>Đường dẫn file:</b> {html.escape(str(result_data['path']))}")
-                if not html_lines: return html.escape(NOT_AVAILABLE)
+                if "path" in result_data and not self._is_value_unavailable(result_data['path']):    html_lines.append(f"<br><b>Đường dẫn file:</b> {html.escape(str(result_data['path']))}")
+                if not html_lines: return html.escape(str(NOT_AVAILABLE))
                 return "<br>".join(html_lines)
             else:
                 for k, v_raw in result_data.items():
-                    if not is_value_unavailable(v_raw):
+                    if not self.is_value_unavailable(v_raw):
                         html_lines.append(f"<b>{html.escape(str(k))}:</b> {html.escape(str(v_raw))}")
-                if not html_lines: return html.escape(NOT_AVAILABLE)
+                if not html_lines: return html.escape(str(NOT_AVAILABLE))
                 return "<br>".join(html_lines)
         else:
             # This case should have been caught by the initial is_value_unavailable(result_data)
-            # but as a fallback, ensure we don't return the unavailable constant itself.
-            return html.escape(str(result_data)) if not is_value_unavailable(result_data) else html.escape(NOT_AVAILABLE)
+            # but as a fallback, ensure we don't return the unavailable constant itself.            
+            return html.escape(str(result_data)) if not self._is_value_unavailable(result_data) else html.escape(NOT_AVAILABLE)
 
     def enable_firewall_qt(self):
         if QMessageBox.question(self, "Xác nhận Bật Tường lửa", "Bạn có chắc chắn muốn BẬT Windows Firewall cho tất cả các profile không?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
@@ -1658,10 +1893,10 @@ class PcInfoAppQt(QMainWindow):
                 event.accept()
             else:
                 event.ignore()
-        else:
-            event.accept()
-        # super().closeEvent(event) # Call super at the end if event is accepted.
-
+        elif event.isAccepted(): # Ensure super is called if event is accepted by this path too
+             super().closeEvent(event)
+        # If event was not accepted by this logic, it might be handled by base class or ignored.
+ 
     def _on_navigation_changed(self, index):
         """Clears search inputs and highlights when tab changes."""
         # Clear the global search input text
@@ -1690,6 +1925,7 @@ class PcInfoAppQt(QMainWindow):
         if hasattr(self, 'stacked_widget_results_fixes'):
             text_edit_fixes = self.stacked_widget_results_fixes.widget(0).findChild(QTextEdit)
             if text_edit_fixes: self._clear_text_highlights(text_edit_fixes)
+
         card_widgets = [self.card_general_info, self.card_os_info, self.card_cpu_info, self.card_ram_info, self.card_mainboard_info, self.card_disks_info, self.card_gpus_info, self.card_screens_info]
         for card in card_widgets:
             content_label = card.findChild(QLabel)
@@ -1699,6 +1935,18 @@ class PcInfoAppQt(QMainWindow):
                 # For simplicity, we assume search on home tab is not implemented yet or handled differently.
                 pass # Thụt vào cho khối if
         self._update_active_save_button_state()
+
+    def _setup_results_table(self, table_widget):
+        """Helper function to setup common properties for results QTableWidget."""
+        table_widget.setFont(self.body_font)
+        table_widget.setAlternatingRowColors(True)
+        table_widget.setSortingEnabled(True)
+        table_widget.horizontalHeader().setStretchLastSection(True)
+        table_widget.setEditTriggers(QTableWidget.NoEditTriggers) # Read-only
+        table_widget.setObjectName("ResultTableWidget") # For QSS styling
+
+
+
 
     def _update_toggle_nav_button_state(self):
         if self.nav_panel_is_collapsed:
@@ -1839,11 +2087,13 @@ class PcInfoAppQt(QMainWindow):
             if file_path:
                 save_text_to_file(content_to_save, file_path)
                 QMessageBox.information(self, "Lưu Thành Công", f"Kết quả đã được lưu vào:\n{file_path}")
+                self._update_status_bar(f"Lưu kết quả tab thành công: {os.path.basename(file_path)}", "success")
         except (IOError, RuntimeError) as save_e:
             QMessageBox.critical(self, "Lỗi Lưu File", f"Không thể lưu file kết quả:\n{save_e}")
         except Exception as e:
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi lưu kết quả: {e}")
             logging.exception("Lỗi không xác định khi lưu kết quả tab:")
+            self._update_status_bar(f"Lỗi lưu kết quả tab: {str(e)[:100]}...", "error")
 
 # Khối main để chạy thử trực tiếp file này (nếu cần)
 # if __name__ == "__main__":

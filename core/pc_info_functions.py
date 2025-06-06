@@ -13,12 +13,16 @@ import shutil # For file operations like temp file deletion
 import ctypes # For checking admin rightsimport platform # Ensure platform is imported for ping
 from datetime import datetime, timedelta # Thêm import datetime và timedelta
 import locale # For preferred encoding
+import time # For disk speed test
+import tempfile # For disk speed test
+import win32serviceutil, win32service # For optimizing windows services
 import json # Thêm import json cho phần if __name__ == "__main__":
 import winreg # Thêm import winreg để truy cập Registry
 
 # --- Cấu hình Logging ---
 # Cấu hình cơ bản, có thể được ghi đè ở file chính
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Constants (Giữ nguyên tiếng Việt) ---
 ERROR_WMI_CONNECTION = "Lỗi kết nối WMI"
@@ -348,9 +352,6 @@ def get_gpu_details(wmi_service):
                 "Ngày Driver": driver_date_formatted, # Key tiếng Việt
             }
             details.append(gpu_info)
-        # Thêm ghi chú về VRAM và nhiệt độ nếu chưa có
-        if details and not any("Ghi chú" in d for d in details):
-            details.append({"Ghi chú": "Thông tin sử dụng VRAM và nhiệt độ GPU hiện tại thường yêu cầu công cụ chuyên dụng từ nhà sản xuất và không có sẵn qua WMI chuẩn."})
         return details
     except (pywintypes.com_error, Exception) as e:
         logging.error(f"Lỗi khi lấy thông tin GPU: {e}", exc_info=True)
@@ -358,13 +359,23 @@ def get_gpu_details(wmi_service):
 
 def get_screen_details(wmi_service):
     """
-    Lấy thông tin màn hình: Tên (Device Manager) + Độ phân giải (từ GPU).
+    Lấy thông tin màn hình: Tên, Độ phân giải (pixels), Tỷ lệ khung hình.
     Trả về list các dict hoặc list chứa lỗi/thông tin.
     """
     if not wmi_service:
         return [{"Lỗi": ERROR_WMI_CONNECTION}]
 
     details = []
+    def gcd(a, b):
+        while(b):
+            a, b = b, a % b
+        return a
+
+    def get_aspect_ratio(width, height):
+        if width and height and isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+            common_divisor = gcd(width, height)
+            return f"{width // common_divisor}:{height // common_divisor}"
+        return NOT_IDENTIFIED
     gpu_resolution = NOT_IDENTIFIED
     # Lấy độ phân giải từ GPU (chỉ cần lấy 1 lần)
     try:
@@ -373,11 +384,15 @@ def get_screen_details(wmi_service):
         for vc in vcs:
             hres = _get_wmi_property(vc, "CurrentHorizontalResolution")
             vres = _get_wmi_property(vc, "CurrentVerticalResolution")
-            if hres and vres and hres != NOT_IDENTIFIED and vres != NOT_IDENTIFIED:
-                gpu_resolution = f"{hres}x{vres}"
+            if hres and vres and isinstance(hres, int) and isinstance(vres, int) and hres > 0 and vres > 0:
+                gpu_resolution = f"{hres}x{vres}" # Độ phân giải pixel
+                aspect_ratio_str = get_aspect_ratio(hres, vres)
                 break # Lấy được rồi thì dừng
+            else: # Nếu vòng lặp không break (không tìm thấy độ phân giải hợp lệ)
+                aspect_ratio_str = NOT_IDENTIFIED
     except (pywintypes.com_error, Exception) as e:
         logging.warning(f"Không lấy được độ phân giải từ GPU: {e}")
+        aspect_ratio_str = NOT_IDENTIFIED
 
     # Lấy thông tin màn hình
     try:
@@ -411,8 +426,10 @@ def get_screen_details(wmi_service):
 
             details.append({
                 "Tên": device_manager_name,             # Key tiếng Việt
-                "Độ phân giải": gpu_resolution, # Key tiếng Việt (hiển thị giống nhau cho mọi màn hình) - Renamed from "Độ phân giải (từ GPU)"
-                "Trạng thái": status                   # Key tiếng Việt
+                "Độ phân giải (pixels)": gpu_resolution, # Key tiếng Việt
+                "Tỷ lệ khung hình": aspect_ratio_str,    # Key tiếng Việt
+                "Kích thước (đường chéo)": f"{NOT_AVAILABLE} (qua WMI)", # Key tiếng Việt
+                "Trạng thái": status                     # Key tiếng Việt
             })
         return details
 
@@ -566,20 +583,31 @@ def get_recent_event_log_summary(wmi_service, hours_ago=24):
             # Modified Query: Remove TimeGenerated filter from WQL, fetch all relevant event types
             query = (f"SELECT EventType, TimeGenerated FROM Win32_NTLogEvent WHERE Logfile = '{logfile}' "
                      f"AND (EventType = 1 OR EventType = 2)")
-            events = wmi_service.ExecQuery(query)
-            for event in events:
-                time_generated_str = _get_wmi_property(event, "TimeGenerated", None)
-                if time_generated_str:
+            raw_events_query = wmi_service.ExecQuery(query)
+            for event_obj in raw_events_query:
+                time_generated_wmi_val = _get_wmi_property(event_obj, "TimeGenerated", None)
+                if time_generated_wmi_val is not None:
                     try:
-                        # Convert WMI DMTF string to pywintypes.datetime object (timezone-aware)
-                        event_time_pywintypes = pywintypes.Time(time_generated_str) # type: ignore
+                        # Ensure time_generated_as_str is unequivocally a string.
+                        time_generated_as_str = str(time_generated_wmi_val)
+                        # CRITICAL LOG: Check type and representation right before the call
+                        logging.debug(f"DEBUG: Argument for pywintypes.Time - Original WMI val: '{time_generated_wmi_val}', Type: {type(time_generated_wmi_val)}")
+                        # Extract the main datetime part (YYYYMMDDHHMMSS)
+                        # WMI datetime format is YYYYMMDDHHMMSS.ffffff+/-UUU
+                        # We only need the YYYYMMDDHHMMSS part for pywintypes.Time
+                        if '.' in time_generated_as_str:
+                            parsable_time_str = time_generated_as_str.split('.')[0]
+                        else: # Handle cases where there might not be a fractional part or offset
+                            parsable_time_str = time_generated_as_str[:14] # Take first 14 chars
+                        event_time_pywintypes = pywintypes.Time(parsable_time_str) # type: ignore
                         
                         if event_time_pywintypes >= threshold_utc_dt: # Compare timezone-aware datetimes
-                            event_type_code = _get_wmi_property(event, "EventType", 0)
+                            event_type_code = _get_wmi_property(event_obj, "EventType", 0)
                             if event_type_code in event_types_map:
                                 summary[logfile][event_types_map[event_type_code]] += 1
                     except (pywintypes.error, ValueError) as e_time: # type: ignore
-                        logging.warning(f"Không thể phân tích TimeGenerated '{time_generated_str}' cho log {logfile}: {e_time}")
+                        # Log both the original value and its string representation for better debugging
+                        logging.warning(f"Không thể phân tích TimeGenerated (orig: '{time_generated_wmi_val}', parsed_attempt: '{parsable_time_str if 'parsable_time_str' in locals() else 'N/A'}') cho log {logfile}: {e_time}")
         return summary
     except (pywintypes.com_error, Exception) as e: # type: ignore
         logging.error(f"Lỗi khi lấy tóm tắt Event Log: {e}", exc_info=True)
@@ -1175,7 +1203,13 @@ def get_recent_event_logs(wmi_service, hours_ago=24, max_events_per_log=25):
                 event_time_pywintypes = None
                 if time_generated_str:
                     try:
-                        event_time_pywintypes = pywintypes.Time(time_generated_str) # type: ignore
+                        # Extract the main datetime part (YYYYMMDDHHMMSS)
+                        if '.' in time_generated_str:
+                            parsable_time_str_detail = time_generated_str.split('.')[0]
+                        else:
+                            parsable_time_str_detail = time_generated_str[:14]
+                        event_time_pywintypes = pywintypes.Time(parsable_time_str_detail) # type: ignore
+                        
                         if event_time_pywintypes < threshold_utc_dt:
                             continue # Skip if older than threshold
                     except (pywintypes.error, ValueError) as e_time: # type: ignore
@@ -2128,6 +2162,217 @@ def get_battery_details(wmi_service):
     except (pywintypes.com_error, Exception) as e:
         logging.error(f"Lỗi khi lấy thông tin pin: {e}", exc_info=True)
         return [{"Lỗi": f"{ERROR_FETCHING_INFO} pin: {str(e)}"}]
+
+# --- Placeholder Functions for New Features ---
+def run_cpu_benchmark():
+    """Placeholder for CPU benchmarking."""
+    logging.info("Chức năng Đánh giá CPU được gọi (chưa triển khai đầy đủ).")
+    # A real benchmark might return scores like PassMark, Geekbench (synthetic), or time for specific tasks.
+    return {"status": "info", "message": "Chức năng Đánh giá CPU hiện chưa được triển khai đầy đủ. Một bài kiểm tra CPU thực tế có thể đo hiệu năng đơn nhân và đa nhân, ví dụ, bằng cách tính toán số Pi hoặc nén dữ liệu."}
+
+def run_gpu_benchmark():
+    """Placeholder for GPU benchmarking."""
+    logging.info("Chức năng Đánh giá GPU được gọi (chưa triển khai đầy đủ).")
+    # A real benchmark might render complex 3D scenes and report FPS.
+    return {"status": "info", "message": "Chức năng Đánh giá GPU hiện chưa được triển khai đầy đủ. Một bài kiểm tra GPU thực tế thường bao gồm việc render đồ họa 3D để đo số khung hình mỗi giây (FPS)."}
+
+def run_memory_speed_test():
+    """Placeholder for Memory Speed Test."""
+    logging.info("Chức năng Kiểm tra Tốc độ Bộ nhớ được gọi (chưa triển khai đầy đủ).")
+    # A real test would measure read/write/copy speeds of RAM.
+    return {"status": "info", "message": "Chức năng Kiểm tra Tốc độ Bộ nhớ hiện chưa được triển khai đầy đủ. Một bài kiểm tra tốc độ bộ nhớ thực tế sẽ đo băng thông đọc, ghi và sao chép của RAM."}
+
+def run_disk_speed_test(file_size_mb=100, block_size_kb=1024):
+    """
+    Performs a basic disk speed test for each local fixed drive.
+    Returns a list of dictionaries, each representing a drive's test results.
+    """
+    logging.info(f"Running basic disk speed test: file_size_MB={file_size_mb}, block_size_KB={block_size_kb}")
+    results_list = []
+    
+    # Get list of local fixed drives (DriveType=3)
+    # Use psutil as it's simpler than WMI for this
+    try:
+        partitions = psutil.disk_partitions(all=False) # Only physical partitions
+        # Filter for fixed drives (type='local' and fstype in typical Windows file systems)
+        # More robust check might involve WMI Win32_LogicalDisk DriveType=3
+        local_drives = [p.mountpoint for p in partitions if p.fstype in ['NTFS', 'FAT32', 'exFAT'] and 'fixed' in p.opts]
+        
+        if not local_drives:
+            logging.warning("No local fixed drives found for disk speed test.")
+            return [{"Thông báo": "Không tìm thấy ổ đĩa cứng cục bộ nào để kiểm tra tốc độ."}]
+            
+    except Exception as e:
+        logging.error(f"Lỗi khi lấy danh sách ổ đĩa: {e}", exc_info=True)
+        return [{"Lỗi": f"Lỗi khi lấy danh sách ổ đĩa: {e}"}]
+
+    bytes_to_test = file_size_mb * 1024 * 1024
+    block_bytes = block_size_kb * 1024
+    if block_bytes <= 0:
+        return [{"Lỗi": "Kích thước khối phải là số dương."}]
+    
+    # Generate a single data block to reuse
+    try:
+        data_block = os.urandom(block_bytes)
+    except Exception as e:
+        logging.error(f"Lỗi tạo dữ liệu kiểm tra: {e}", exc_info=True)
+        return [{"Lỗi": f"Không thể tạo dữ liệu kiểm tra: {e}"}]
+
+    temp_file_path = None # Initialize to ensure it's defined for finally
+
+    for drive_path in local_drives:
+        temp_file_path = None
+        drive_result = {
+            "Ổ đĩa": drive_path,
+            "Kích thước File Test (MB)": file_size_mb, # Đổi tên key cho rõ ràng hơn trong bảng
+            "Kích thước Khối (KB)": block_size_kb,    # Đổi tên key
+            "Tốc độ Ghi (MB/s)": NOT_AVAILABLE,
+            "Tốc độ Đọc (MB/s)": NOT_AVAILABLE,
+            "Trạng thái": "Chưa kiểm tra"
+        }
+        
+        try:
+            temp_file_descriptor, temp_file_path = tempfile.mkstemp(suffix=".tmp", prefix="disk_speed_test_", dir=drive_path)
+            os.close(temp_file_descriptor)
+
+            logging.info(f"Testing drive {drive_path}, temporary file: {temp_file_path}")
+
+            # --- Write Test ---
+            write_start_time = time.perf_counter()
+            bytes_written = 0
+            with open(temp_file_path, "wb") as f:
+                while bytes_written < bytes_to_test:
+                    write_size = min(block_bytes, bytes_to_test - bytes_written)
+                    # Adjust last block if smaller, or ensure data_block is used correctly
+                    current_block_to_write = data_block[:write_size] if write_size < block_bytes else data_block
+                    f.write(current_block_to_write)
+                    bytes_written += write_size
+            write_duration = time.perf_counter() - write_start_time
+
+            write_speed_mbps = NOT_AVAILABLE
+            if write_duration > 0:
+                write_speed_mbps = round((bytes_written / (1024 * 1024)) / write_duration, 2)
+            drive_result["Tốc độ Ghi (MB/s)"] = write_speed_mbps
+
+            # --- Read Test ---
+            read_start_time = time.perf_counter()
+            bytes_read = 0
+            with open(temp_file_path, "rb") as f:
+                while True:
+                    chunk = f.read(block_bytes)
+                    if not chunk:
+                        break
+                    bytes_read += len(chunk)
+            read_duration = time.perf_counter() - read_start_time
+
+            read_speed_mbps = NOT_AVAILABLE
+            if read_duration > 0:
+                read_speed_mbps = round((bytes_read / (1024 * 1024)) / read_duration, 2)
+            drive_result["Tốc độ Đọc (MB/s)"] = read_speed_mbps
+            drive_result["Trạng thái"] = "Hoàn thành"
+
+            logging.info(f"Disk speed test for {drive_path} completed: Write={write_speed_mbps} MB/s, Read={read_speed_mbps} MB/s")
+
+        except Exception as e:
+            logging.error(f"Error during disk speed test for {drive_path}: {e}", exc_info=True)
+            drive_result["Tốc độ Ghi (MB/s)"] = NOT_AVAILABLE # Đảm bảo các trường tốc độ là NOT_AVAILABLE khi lỗi
+            drive_result["Tốc độ Đọc (MB/s)"] = NOT_AVAILABLE
+            drive_result["Trạng thái"] = f"Lỗi - {str(e)}"
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    logging.info(f"Temporary file {temp_file_path} deleted.")
+                except Exception as e_del:
+                    logging.error(f"Failed to delete temporary file {temp_file_path}: {e_del}")
+        results_list.append(drive_result)
+        
+    return results_list # Trả về danh sách các dictionary
+
+
+def get_service_status_display(service_name):
+    try:
+        status = win32serviceutil.QueryServiceStatus(service_name)[1] # dwCurrentState
+        startup_type = win32serviceutil.QueryServiceConfig(service_name)[1] # dwStartType
+
+        status_map = {
+            win32service.SERVICE_STOPPED: "Đã dừng", win32service.SERVICE_START_PENDING: "Đang khởi động",
+            win32service.SERVICE_STOP_PENDING: "Đang dừng", win32service.SERVICE_RUNNING: "Đang chạy",
+            win32service.SERVICE_CONTINUE_PENDING: "Đang tiếp tục", win32service.SERVICE_PAUSE_PENDING: "Đang tạm dừng",
+            win32service.SERVICE_PAUSED: "Đã tạm dừng",
+        }
+        startup_map = {
+            win32service.SERVICE_AUTO_START: "Tự động", win32service.SERVICE_DEMAND_START: "Thủ công",
+            win32service.SERVICE_DISABLED: "Vô hiệu hóa", win32service.SERVICE_BOOT_START: "Boot Start",
+            win32service.SERVICE_SYSTEM_START: "System Start"
+        }
+        return f"Hiện tại: {status_map.get(status, 'Không rõ')}, Khởi động: {startup_map.get(startup_type, 'Không rõ')}"
+    except Exception: # pywintypes.error or other exceptions
+        # logging.warning(f"Không thể truy vấn dịch vụ '{service_name}': {e}")
+        return "Không thể truy vấn (cần Admin hoặc dịch vụ không tồn tại)"
+
+def optimize_windows_services():
+    """
+    Provides *suggestions* for optimizing Windows services.
+    DOES NOT actually change any service settings.
+    """
+    logging.info("Chức năng Tối ưu Dịch Vụ Windows được gọi (chỉ cung cấp gợi ý).")
+
+    suggested_optimizations = [
+        {"Tên Dịch vụ": "DiagTrack", "Tên Hiển thị": "Connected User Experiences and Telemetry", "Trạng thái Hiện tại": get_service_status_display("DiagTrack"), "Gợi ý Tối ưu": "Vô hiệu hóa (Disabled)", "Mô tả / Rủi ro": "Gửi dữ liệu chẩn đoán về Microsoft. Tắt có thể tăng quyền riêng tư."},
+        {"Tên Dịch vụ": "dmwappushservice", "Tên Hiển thị": "Device Management Wireless Application Protocol (WAP) Push message Routing Service", "Trạng thái Hiện tại": get_service_status_display("dmwappushservice"), "Gợi ý Tối ưu": "Vô hiệu hóa (Disabled)", "Mô tả / Rủi ro": "Thường không cần thiết cho người dùng gia đình."},
+        {"Tên Dịch vụ": "PrintSpoole", "Tên Hiển thị": "Print Spooler", "Trạng thái Hiện tại": get_service_status_display("PrintSpoole"), "Gợi ý Tối ưu": "Thủ công (Manual) nếu không thường xuyên in", "Mô tả / Rủi ro": "Quản lý in ấn. Tắt sẽ không thể in."}, # Tên dịch vụ đúng là PrintSpoole
+        {"Tên Dịch vụ": "RemoteRegistry", "Tên Hiển thị": "Remote Registry", "Trạng thái Hiện tại": get_service_status_display("RemoteRegistry"), "Gợi ý Tối ưu": "Vô hiệu hóa (Disabled)", "Mô tả / Rủi ro": "Cho phép sửa đổi Registry từ xa. Tắt để tăng bảo mật."},
+        {"Tên Dịch vụ": "Fax", "Tên Hiển thị": "Fax", "Trạng thái Hiện tại": get_service_status_display("Fax"), "Gợi ý Tối ưu": "Vô hiệu hóa (Disabled)", "Mô tả / Rủi ro": "Hỗ trợ fax. Tắt nếu không sử dụng."},
+    ]
+    
+    admin_note = "" if is_admin() else "Lưu ý: Một số thông tin trạng thái dịch vụ có thể không hiển thị đầy đủ do thiếu quyền Administrator.\n"
+
+    return {
+        "status": "info",
+        "message": f"{admin_note}Đây là các gợi ý tối ưu dịch vụ. Việc thay đổi cài đặt dịch vụ hệ thống có thể ảnh hưởng đến hoạt động của Windows. Hãy tìm hiểu kỹ trước khi thực hiện.",
+        "details": suggested_optimizations
+    }
+
+def clean_registry_with_backup():
+    """
+    *Simulates* cleaning registry entries and *simulates* creating a backup.
+    DOES NOT actually delete any registry keys or values or create a real backup.
+    """
+    logging.info("Chức năng Dọn Dẹp Registry (Có Sao Lưu) được gọi (chỉ mô phỏng và cung cấp ví dụ).")
+    results = {
+        "Trạng thái Sao lưu": NOT_AVAILABLE, "Đường dẫn Sao lưu (Mô phỏng)": NOT_AVAILABLE,
+        "Khu vực có thể kiểm tra (Ví dụ)": [],
+        "Hành động Thực hiện": "Không có thay đổi nào được thực hiện (chỉ mô phỏng).", "Lỗi": []
+    }
+    admin_note = ""
+    if not is_admin():
+        admin_note = "Cảnh báo: Chức năng sao lưu và truy cập Registry đầy đủ yêu cầu quyền Administrator. Hoạt động ở chế độ mô phỏng hạn chế.\n"
+        results["Lỗi"].append("Thiếu quyền Administrator.")
+
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        simulated_backup_folder = os.path.join(os.path.expanduser("~"), "Documents", "Registry_Backups_PcInfoApp_Simulated")
+        os.makedirs(simulated_backup_folder, exist_ok=True)
+        simulated_backup_path = os.path.join(simulated_backup_folder, f"simulated_registry_backup_{timestamp}.reg")
+        with open(simulated_backup_path, "w", encoding="utf-8") as f:
+            f.write(f"; Simulated Registry Backup by PcInfoApp at {datetime.now()}\n; NO ACTUAL DATA IS BACKED UP IN SIMULATION MODE.\n")
+        results["Trạng thái Sao lưu"] = "Sao lưu Registry ĐƯỢC MÔ PHỎNG thành công."
+        results["Đường dẫn Sao lưu (Mô phỏng)"] = simulated_backup_path
+    except Exception as e_backup:
+        results["Trạng thái Sao lưu"] = "Mô phỏng sao lưu Registry thất bại."
+        results["Lỗi"].append(f"Lỗi mô phỏng sao lưu: {str(e_backup)}")
+
+    results["Khu vực có thể kiểm tra (Ví dụ)"] = [
+        {"Khu vực": "Lịch sử lệnh Run (RunMRU)", "Đường dẫn": r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU", "Mô tả": "Lưu các lệnh đã gõ trong Run. Xóa tăng riêng tư."},
+        {"Khu vực": "File đã mở gần đây (RecentDocs)", "Đường dẫn": r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs", "Mô tả": "Lưu danh sách tài liệu mở gần đây. Xóa tăng riêng tư."},
+    ]
+
+    final_message = f"{admin_note}Mô phỏng dọn dẹp Registry hoàn tất. {results['Hành động Thực hiện']}"
+    if results["Lỗi"]:
+        final_message += " Đã xảy ra lỗi trong quá trình mô phỏng."
+
+    return { "status": "warning" if results["Lỗi"] else "info", "message": final_message, "details": results }
 # --- Hàm kiểm tra (nếu cần) ---
 if __name__ == "__main__":
     print("Đang thu thập thông tin PC...")
