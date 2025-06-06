@@ -32,7 +32,8 @@ from core.pc_info_functions import ( # type: ignore
     get_network_configuration_details, # Import hàm mới
     get_startup_programs, run_ping_test, create_system_restore_point,
     # Giả định các hàm này sẽ được tạo trong core.pc_info_functions.py
-    lookup_dns_address,      # Ví dụ: lookup_dns_address("google.com")
+    lookup_dns_address,
+    list_upgradable_winget_packages, # Cho Update Center
     get_active_network_connections, # Ví dụ: netstat    
     # Các hàm cho tính năng (một số sẽ bị loại bỏ khỏi GUI)
     run_cpu_benchmark, run_gpu_benchmark, run_memory_speed_test, run_disk_speed_test, # Cho tab Hiệu năng
@@ -40,7 +41,11 @@ from core.pc_info_functions import ( # type: ignore
     get_disk_health_status,   # Hàm mới cho tình trạng ổ cứng
     get_battery_details,      # Hàm mới cho chi tiết pin
     set_dns_servers,          # Hàm mới để cấu hình DNS
-    flush_dns_cache           # Ví dụ: ipconfig /flushdns
+    flush_dns_cache,          # Ví dụ: ipconfig /flushdns
+    calculate_system_health_score, # Cho System Health Score
+    apply_gaming_mode,             # Cho Gaming Mode
+    manage_startup_item,           # Cho Startup Manager (enable/disable/delete)
+    get_windows_update_status      # Cho Update Center
 )
 from core.pc_info_manager import (
     validate_user_input, generate_filename, save_text_to_file,
@@ -462,27 +467,31 @@ class PcInfoAppQt(QMainWindow):
         # --- Populate Navigation and Pages ---
         self.page_dashboard = QWidget()
         self._create_dashboard_tab(self.page_dashboard) # New/Renamed method
-        self._add_navigation_item("📊 Dashboard", self.page_dashboard, icon_path=resource_path(os.path.join("assets", "icons", "dashboard.png")))
+        self._add_navigation_item("Dashboard", self.page_dashboard, icon_path=resource_path(os.path.join("assets", "icons", "dashboard.png")))
 
         self.page_system_info = QWidget()
         self._create_system_info_tab(self.page_system_info) # New method
-        self._add_navigation_item("💻 Hệ Thống", self.page_system_info, icon_path=resource_path(os.path.join("assets", "icons", "system.png")))
+        self._add_navigation_item("Hệ Thống", self.page_system_info, icon_path=resource_path(os.path.join("assets", "icons", "system.png")))
 
         self.page_security = QWidget()
         self._create_security_tab(self.page_security) # New method
-        self._add_navigation_item("🛡️ Bảo Mật", self.page_security, icon_path=resource_path(os.path.join("assets", "icons", "security.png")))
+        self._add_navigation_item("Bảo Mật", self.page_security, icon_path=resource_path(os.path.join("assets", "icons", "security.png")))
 
         self.page_optimize = QWidget()
         self._create_optimize_tab(self.page_optimize) # New method
-        self._add_navigation_item("🔧 Tối Ưu", self.page_optimize, icon_path=resource_path(os.path.join("assets", "icons", "optimize.png")))
+        self._add_navigation_item("Tối Ưu", self.page_optimize, icon_path=resource_path(os.path.join("assets", "icons", "optimize.png")))
 
-        self.page_network = QWidget()
-        self._create_network_tab(self.page_network) # New method
-        self._add_navigation_item("🌐 Mạng", self.page_network, icon_path=resource_path(os.path.join("assets", "icons", "network.png")))
+        self.page_network = QWidget() # Khởi tạo trang Mạng
+        self._create_network_tab(self.page_network) # Gọi hàm tạo nội dung cho tab Mạng
+        self._add_navigation_item("Mạng", self.page_network, icon_path=resource_path(os.path.join("assets", "icons", "network.png")))
+
+        self.page_update_center = QWidget() # Trang mới: Trung tâm Cập nhật
+        self._create_update_center_tab(self.page_update_center)
+        self._add_navigation_item("Cập nhật", self.page_update_center, icon_path=resource_path(os.path.join("assets", "icons", "update.png"))) # Cần icon update.png
 
         self.page_report_settings = QWidget() # Was page_about
         self._create_report_settings_tab(self.page_report_settings) # Renamed method
-        self._add_navigation_item("📋 Báo Cáo & Cài đặt", self.page_report_settings, icon_path=resource_path(os.path.join("assets", "icons", "report.png")))
+        self._add_navigation_item("Báo Cáo & Cài đặt", self.page_report_settings, icon_path=resource_path(os.path.join("assets", "icons", "report.png")))
 
         self.nav_list_widget.currentRowChanged.connect(self._on_navigation_changed)
         self.nav_list_widget.setCurrentRow(0) # Select the first item
@@ -540,6 +549,14 @@ class PcInfoAppQt(QMainWindow):
         self.label_system_status.setObjectName("SystemStatusLabel")
         layout.addWidget(self.label_system_status)
 
+        # --- System Health Score ---
+        self.label_system_health_score = QLabel("Điểm Sức Khỏe Hệ Thống: Đang tính...")
+        self.label_system_health_score.setFont(self.h2_font)
+        self.label_system_health_score.setAlignment(Qt.AlignCenter)
+        self.label_system_health_score.setObjectName("SystemHealthScoreLabel")
+        layout.addWidget(self.label_system_health_score)
+
+
         # --- Hardware Info Grid (CPU, RAM, SSD, GPU with ProgressBars) ---
         hardware_grid_group = QGroupBox("Tổng Quan Hệ Thống")
         hardware_grid_group.setFont(self.h2_font)
@@ -576,7 +593,8 @@ class PcInfoAppQt(QMainWindow):
         self.label_gpu_info, self.progress_gpu = create_hw_row("GPU:")
         grid_layout.addWidget(self.label_gpu_info, 3, 0)
         grid_layout.addWidget(self.progress_gpu, 3, 1)
-        
+
+
         grid_layout.setColumnStretch(0, 1) # Label column
         grid_layout.setColumnStretch(1, 3) # ProgressBar column (takes more space)
 
@@ -592,6 +610,8 @@ class PcInfoAppQt(QMainWindow):
         self.label_ssd_info.setText("SSD/HDD: Đang tải...")
         self.progress_gpu.setValue(0)
         self.label_gpu_info.setText("GPU: Đang tải...")
+
+
 
     def _create_system_info_tab(self, parent_tab_widget): # Was _create_home_tab
         layout = QVBoxLayout(parent_tab_widget)
@@ -675,8 +695,8 @@ class PcInfoAppQt(QMainWindow):
         self.card_disks_info = self._create_info_card("Ổ Đĩa") # For multiple disks
         self.card_gpus_info = self._create_info_card("Card Đồ Họa (GPU)") # For multiple GPUs
         self.card_screens_info = self._create_info_card("Màn Hình") # For multiple screens
-        # self.card_disk_health_info = self._create_info_card("Tình Trạng Ổ Cứng (S.M.A.R.T)") # Removed as per request
-        # self.card_battery_info = self._create_info_card("Thông Tin Pin (Laptop)") # Removed as per request
+        self.card_temperatures_info = self._create_info_card("Nhiệt Độ Hệ Thống") # Card mới cho nhiệt độ
+        
 
 
         self.home_cards_layout.addWidget(self.card_general_info, 0, 0)
@@ -688,7 +708,8 @@ class PcInfoAppQt(QMainWindow):
         self.home_cards_layout.addWidget(self.card_disks_info, 2, 1)    # Physical disks moved to (2,1)
         # self.home_cards_layout.addWidget(self.card_battery_info, 3, 1)  # Removed
         self.home_cards_layout.addWidget(self.card_gpus_info, 3, 0, 1, 2) # Span 2 columns for GPUs, moved to row 3
-        self.home_cards_layout.addWidget(self.card_screens_info, 4, 0, 1, 2) # Span 2 columns for Screens, moved to row 4
+        self.home_cards_layout.addWidget(self.card_screens_info, 4, 0) 
+        self.home_cards_layout.addWidget(self.card_temperatures_info, 4, 1) # Thêm card nhiệt độ
 
         cards_scroll_area.setWidget(cards_container_widget)
         layout.addWidget(cards_scroll_area, 1) # Add scroll area to the main tab layout
@@ -816,13 +837,35 @@ class PcInfoAppQt(QMainWindow):
         self.optimize_actions_layout.setSpacing(10)
         self.optimize_actions_layout.setAlignment(Qt.AlignTop)
 
+        # One-click Optimization Button
+        self.button_one_click_optimize = QPushButton("🚀 Tối Ưu Hóa Toàn Diện (1-Click)")
+        self.button_one_click_optimize.setFont(self.h2_font) # Font lớn hơn
+        self.button_one_click_optimize.setObjectName("OneClickOptimizeButton") # Để styling riêng
+        self.button_one_click_optimize.setToolTip("Chạy các tác vụ dọn dẹp, tối ưu cơ bản và sửa lỗi được đề xuất.")
+        self.button_one_click_optimize.clicked.connect(self.on_one_click_optimize_clicked)
+        self.optimize_actions_layout.addWidget(self.button_one_click_optimize)
+
+        # Gaming Mode Button
+        self.button_toggle_gaming_mode = QPushButton("🎮 Chế Độ Gaming: TẮT")
+        self.button_toggle_gaming_mode.setCheckable(True)
+        self.button_toggle_gaming_mode.setFont(self.h2_font)
+        self.button_toggle_gaming_mode.setObjectName("GamingModeButton")
+        self.button_toggle_gaming_mode.toggled.connect(self.on_toggle_gaming_mode_clicked)
+        self.optimize_actions_layout.addWidget(self.button_toggle_gaming_mode)
+
+        # Separator
+        line_sep = QFrame()
+        line_sep.setFrameShape(QFrame.HLine)
+        line_sep.setFrameShadow(QFrame.Sunken)
+        self.optimize_actions_layout.addWidget(line_sep)
+
         # Group: Dọn dẹp & Tối ưu
         group_cleanup = QGroupBox("Dọn dẹp & Tối ưu Cơ Bản")
         group_cleanup.setFont(self.h2_font)
         cleanup_layout = QVBoxLayout(group_cleanup)
         self._add_utility_button(cleanup_layout, "Xóa File Tạm & Dọn Dẹp", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, clear_temporary_files, "optimize_clear_temp"))
         self._add_utility_button(cleanup_layout, "Mở Resource Monitor", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, open_resource_monitor, "optimize_resmon"))
-        self._add_utility_button(cleanup_layout, "Quản Lý Khởi Động Cùng Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_optimize, get_startup_programs, "optimize_startup_programs", needs_wmi=True, result_type="table"))
+        self._add_utility_button(cleanup_layout, "Quản Lý Ứng Dụng Khởi Động", self.on_manage_startup_programs_clicked) # Sửa lại để gọi hàm riêng
         self.optimize_actions_layout.addWidget(group_cleanup)
 
         # Group: Sửa lỗi & Cập nhật Hệ thống (một phần chuyển sang Tối ưu)
@@ -864,9 +907,19 @@ class PcInfoAppQt(QMainWindow):
         self._update_display_widget(self.text_optimize_results_qt, "Kết quả của tác vụ tối ưu sẽ hiển thị ở đây.")
         self.stacked_widget_results_optimize.addWidget(results_group)
 
-        self.table_optimize_results_qt = QTableWidget()
-        self._setup_results_table(self.table_optimize_results_qt)
-        self.stacked_widget_results_optimize.addWidget(self.table_optimize_results_qt)
+        # Thêm các nút quản lý Startup (sẽ được ẩn/hiện)
+        self.startup_manager_buttons_frame = QFrame()
+        startup_buttons_layout = QHBoxLayout(self.startup_manager_buttons_frame)
+        self.button_enable_startup_item = QPushButton("Bật mục chọn")
+        self.button_enable_startup_item.clicked.connect(lambda: self.on_manage_selected_startup_item("enable"))
+        self.button_disable_startup_item = QPushButton("Tắt mục chọn")
+        self.button_disable_startup_item.clicked.connect(lambda: self.on_manage_selected_startup_item("disable"))
+        startup_buttons_layout.addWidget(self.button_enable_startup_item)
+        startup_buttons_layout.addWidget(self.button_disable_startup_item)
+        # self.button_delete_startup_item = QPushButton("Xóa mục chọn") # Cân nhắc thêm nút xóa
+        # startup_buttons_layout.addWidget(self.button_delete_startup_item)
+        self.startup_manager_buttons_frame.setVisible(False) # Ban đầu ẩn
+        self.optimize_results_main_layout.addWidget(self.startup_manager_buttons_frame)
 
         self.optimize_results_main_layout.addWidget(self.stacked_widget_results_optimize, 1)
         content_layout.addWidget(results_container_widget, 3)
@@ -937,9 +990,51 @@ class PcInfoAppQt(QMainWindow):
         # if you decide to have a "General Utilities" or "Diagnostics" tab.
         # For now, these functions might be integrated into "💻 Hệ Thống" or other specific tabs.
         pass
+    def _create_update_center_tab(self, parent_tab_widget):
+        tab_main_layout = QVBoxLayout(parent_tab_widget)
+        tab_main_layout.setSpacing(15)
+        tab_main_layout.setAlignment(Qt.AlignTop)
 
-        content_layout.addWidget(results_container_widget, 3) # Điều chỉnh tỷ lệ cho cột phải
+        # --- Windows Update Section ---
+        group_windows_update = QGroupBox("Windows Update")
+        group_windows_update.setFont(self.h2_font)
+        wu_layout = QVBoxLayout(group_windows_update)
+        
+        self.label_windows_update_status = QLabel("Trạng thái Windows Update: Đang kiểm tra...")
+        self.label_windows_update_status.setFont(self.body_font)
+        wu_layout.addWidget(self.label_windows_update_status)
 
+        btn_check_wu = QPushButton("Kiểm tra & Mở Windows Update")
+        btn_check_wu.clicked.connect(self.on_check_windows_update_clicked)
+        wu_layout.addWidget(btn_check_wu)
+        tab_main_layout.addWidget(group_windows_update)
+
+        # --- Winget Updates Section ---
+        group_winget = QGroupBox("Cập nhật ứng dụng (Winget)")
+        group_winget.setFont(self.h2_font)
+        winget_layout = QVBoxLayout(group_winget)
+
+        btn_list_winget = QPushButton("Liệt kê ứng dụng có thể cập nhật")
+        btn_list_winget.clicked.connect(lambda: self._run_task_in_thread_qt(btn_list_winget, self.stacked_widget_results_update_center, list_upgradable_winget_packages, "update_winget_list", result_type="text")) # Hiển thị kết quả ở text_update_results_qt
+        winget_layout.addWidget(btn_list_winget)
+
+        btn_update_all_winget = QPushButton("Cập nhật tất cả ứng dụng qua Winget")
+        btn_update_all_winget.clicked.connect(lambda: self._run_task_in_thread_qt(btn_update_all_winget, self.stacked_widget_results_update_center, update_all_winget_packages, "update_winget_all"))
+        winget_layout.addWidget(btn_update_all_winget)
+        tab_main_layout.addWidget(group_winget)
+
+        # --- Defender Definitions Section ---
+        group_defender = QGroupBox("Định nghĩa Virus (Windows Defender)")
+        group_defender.setFont(self.h2_font)
+        defender_layout = QVBoxLayout(group_defender)
+        btn_update_defender = QPushButton("Cập nhật định nghĩa Virus")
+        btn_update_defender.clicked.connect(lambda: self._run_task_in_thread_qt(btn_update_defender, self.stacked_widget_results_update_center, update_windows_defender_definitions, "update_defender_defs"))
+        defender_layout.addWidget(btn_update_defender)
+        tab_main_layout.addWidget(group_defender)
+
+        # --- Results Display for Update Center ---
+        self.stacked_widget_results_update_center = self._create_results_display_area("Kết quả Cập nhật", "text_update_results_qt", "table_update_results_qt")
+        tab_main_layout.addWidget(self.stacked_widget_results_update_center, 1) # Cho phép mở rộng
     def _add_utility_button(self, layout, text, on_click_action, object_name=None):
         button = QPushButton(text)
         if object_name:
@@ -1072,6 +1167,9 @@ class PcInfoAppQt(QMainWindow):
                 self._perform_text_search(self.stacked_widget_results_network.widget(0).findChild(QTextEdit), search_term)
         # Add search for self.page_system_info if it contains searchable text/tables
         # elif current_page_widget == self.page_system_info:
+        elif current_page_widget == self.page_update_center: # Search for Update Center
+            self._filter_action_buttons(search_term, self.page_update_center.layout()) # Assuming buttons are directly in layout or in groups
+            
             # Example: if system_info tab has a QTextEdit for detailed logs or similar
             # text_edit_system = self.page_system_info.findChild(QTextEdit, "SystemInfoTextDisplay")
             # if text_edit_system:
@@ -1125,6 +1223,30 @@ class PcInfoAppQt(QMainWindow):
         scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Mô tả:", readme_text, is_html=True))
         scroll_area.setWidget(scroll_content_widget)
         layout.addWidget(scroll_area)
+    def _create_results_display_area(self, group_title, text_edit_object_name, table_widget_object_name):
+        """Helper to create a QStackedWidget with a QTextEdit and QTableWidget for results."""
+        stacked_widget = QStackedWidget()
+
+        # Page 0: QTextEdit for general results
+        results_group_text = QGroupBox(group_title)
+        results_group_text.setFont(self.body_font)
+        results_layout_inner_text = QVBoxLayout(results_group_text)
+        text_edit_results = QTextEdit()
+        text_edit_results.setReadOnly(True)
+        text_edit_results.setFont(self.monospace_font)
+        text_edit_results.setWordWrapMode(QTextOption.NoWrap)
+        text_edit_results.setObjectName(text_edit_object_name)
+        results_layout_inner_text.addWidget(text_edit_results)
+        self._update_display_widget(text_edit_results, "Kết quả sẽ hiển thị ở đây.")
+        stacked_widget.addWidget(results_group_text)
+
+        # Page 1: QTableWidget for table results
+        table_results = QTableWidget()
+        self._setup_results_table(table_results) # Use common setup
+        table_results.setObjectName(table_widget_object_name)
+        stacked_widget.addWidget(table_results)
+
+        return stacked_widget
 
     def _create_info_section_qt(self, parent, title_text, content_text, is_html=False):
         section_group = QGroupBox(title_text)
@@ -1160,13 +1282,13 @@ class PcInfoAppQt(QMainWindow):
             }}
             QFrame#TopHeaderBar {{
                 background-color: {FRAME_BG}; /* Or a specific header color */
-                border-bottom: 1px solid {BORDER_COLOR_LIGHT};
+                border-bottom: none; /* Bỏ viền dưới */
                 padding: 0px; /* Remove padding if QHBoxLayout handles it */
             }}
             QWidget {{ /* Apply default font to all child widgets */
                 font-family: "{DEFAULT_FONT_FAMILY}";
                 font-size: {BODY_FONT_SIZE}pt;
-                color: {TEXT_COLOR_PRIMARY};
+                color: {TEXT_COLOR_PRIMARY}; 
             }}
             QGroupBox {{
                 background-color: {GROUPBOX_BG}; /* Background for groupbox */
@@ -1192,36 +1314,36 @@ class PcInfoAppQt(QMainWindow):
             }}
             QPushButton {{
                 /* Default button style - will be overridden by specific objectNames or classes */
-                background-color: {BUTTON_SECONDARY_BG};
+                background-color: {BUTTON_SECONDARY_BG}; 
                 color: {TEXT_COLOR_PRIMARY};
-                border: 1px solid {BORDER_COLOR_DARK};
+                border: none; /* Bỏ viền nút mặc định */
                 border-radius: 6px; /* Increased border radius */
                 padding: 8px 15px; /* Increased padding */
                 min-height: 20px; /* Minimum height */
                 /* font-family and font-size are inherited from QWidget or set by self.default_font */
-            }}
+            }} 
             QPushButton:hover {{
                 background-color: {BUTTON_SECONDARY_HOVER};
                 border-color: {ACCENT_COLOR_HOVER}; /* Highlight border on hover */
-            }}
+            }} # type: ignore
             QPushButton:pressed {{
                 background-color: {BUTTON_SECONDARY_PRESSED};
             }}
             QPushButton:disabled {{
                 background-color: #E0E0E0; /* Lighter grey for disabled */
-                color: #A0A0A0; /* Lighter text for disabled */
-                border-color: #D0D0D0;
+                color: #A0A0A0; /* Lighter text for disabled */ 
+                border: none; /* Bỏ viền nút bị vô hiệu hóa */
             }}
             QLineEdit, QComboBox, QTextEdit {{
                 background-color: {INPUT_BG};
-                border: 1px solid {INPUT_BORDER_COLOR};
+                border: none; /* Bỏ viền cho input fields */
                 border-radius: 5px; /* Moderate border radius */
                 padding: 6px; /* Increased padding */
                 color: {TEXT_COLOR_PRIMARY};
                 /* font-family and font-size are inherited or set by specific QFont in code */
             }}
             QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
-                border-color: {ACCENT_COLOR}; /* Highlight border on focus */
+                /* border: 1px solid {ACCENT_COLOR}; */ /* Bỏ viền khi focus hoặc tùy chỉnh lại */
             }}
             QComboBox::drop-down {{
                 border: none;
@@ -1247,23 +1369,21 @@ class PcInfoAppQt(QMainWindow):
                 /* Font will be set by self.default_font or self.monospace_font in Python */
             }}
             QTabWidget::pane {{ /* The tab widget frame */
-                border: 1px solid {BORDER_COLOR_LIGHT};
-                border-top: none; /* Remove top border of pane as tab has it */
+                border: none; /* Bỏ viền của pane */
                 background: {FRAME_BG};
                 border-bottom-left-radius: 8px; /* Rounded corners for pane */
                 border-bottom-right-radius: 8px;
             }}
             QTabBar::tab {{
                 background: {TAB_BG_INACTIVE};
-                color: {TAB_TEXT_INACTIVE};
-                border: 1px solid {BORDER_COLOR_LIGHT};
-                border-bottom: none; /* Crucial: tab has no bottom border when inactive */
+                color: {TAB_TEXT_INACTIVE}; 
+                border: none; /* Bỏ viền của tab */
                 border-top-left-radius: 6px;
                 border-top-right-radius: 6px;
                 padding: 8px 15px; /* Adjusted padding for tabs */
                 margin-right: 2px; /* Spacing between tabs */
                 /* font is set by self.notebook.setFont(self.bold_font) */
-            }}
+            }} 
             QTabBar::tab:selected {{
                 background: {TAB_BG_ACTIVE}; /* Active tab background same as pane */
                 color: {TAB_TEXT_ACTIVE};
@@ -1272,7 +1392,7 @@ class PcInfoAppQt(QMainWindow):
             }}
             QListWidget#NavList {{
                 background-color: {WINDOW_BG}; /* Match window background or a slightly different shade */
-                border: 1px solid {BORDER_COLOR_LIGHT};
+                border: none; /* Bỏ viền của NavList */
                 padding: 5px;
                 outline: 0; /* Remove focus outline if not desired */
             }}
@@ -1297,7 +1417,7 @@ class PcInfoAppQt(QMainWindow):
             }}
             QSplitter::handle:hover {{ background-color: {BORDER_COLOR_DARK}; }}
             QScrollBar:vertical {{
-                border: 1px solid {BORDER_COLOR_LIGHT};
+                border: none; /* Bỏ viền của scrollbar */
                 background: {WINDOW_BG};
                 width: 12px;
                 margin: 0px 0px 0px 0px;
@@ -1319,28 +1439,28 @@ class PcInfoAppQt(QMainWindow):
                 background: none;
             }}
             /* Styles for result display QTextEdit and QTableWidget widgets */
-            QTextEdit#ResultTextEdit, QTextEdit#SecurityResultTextEdit, QTextEdit#OptimizeResultTextEdit, QTextEdit#NetworkResultTextEdit, QTextEdit#FixesResultTextEdit {{
+            QTextEdit#ResultTextEdit, QTextEdit#SecurityResultTextEdit, QTextEdit#OptimizeResultTextEdit, QTextEdit#NetworkResultTextEdit, QTextEdit#FixesResultTextEdit, QTextEdit#text_update_results_qt {{
                  font-family: "{MONOSPACE_FONT_FAMILY}";
                  font-size: {MONOSPACE_FONT_SIZE}pt;
                  background-color: #FAFAFA; /* Slightly different background for readability */
-                 border: 1px solid {BORDER_COLOR_LIGHT};
+                 border: none; /* Bỏ viền cho các ô hiển thị kết quả text */
             }}
             QTableWidget#ResultTableWidget {{
                 font-family: "{DEFAULT_FONT_FAMILY}";
                 font-size: {BODY_FONT_SIZE-1}pt; /* Slightly smaller for table data */
                 alternate-background-color: #F5F5F5; /* Light grey for alternate rows */
-                gridline-color: {BORDER_COLOR_LIGHT};
-                border: 1px solid {BORDER_COLOR_LIGHT};
+                gridline-color: transparent; /* Làm trong suốt đường lưới */
+                border: none; /* Bỏ viền cho bảng kết quả */
             }}
             QTableWidget#ResultTableWidget::item:hover {{
                 background-color: {ACCENT_COLOR_HOVER};
-                color: white;
+                color: white; 
             }}
             QHeaderView::section {{
                 background-color: {BUTTON_SECONDARY_BG};
                 padding: 4px;
-                border: 1px solid {BORDER_COLOR_LIGHT};
-                font-weight: bold; /* Đã có, giữ lại */
+                border: none; /* Bỏ viền cho header của bảng */
+                font-weight: bold;
             }}
             /* Styling for QMessageBox */
             QMessageBox {{
@@ -1354,8 +1474,8 @@ class PcInfoAppQt(QMainWindow):
             }}
             QMessageBox QPushButton {{ /* Buttons in QMessageBox */
                 background-color: {BUTTON_SECONDARY_BG};
-                color: {BUTTON_SECONDARY_TEXT};
-                border: 1px solid {BORDER_COLOR_DARK};
+                color: {BUTTON_SECONDARY_TEXT}; 
+                border: none; /* Bỏ viền nút trong QMessageBox */
                 border-radius: 4px;
                 padding: 6px 12px;
                 min-width: 70px;
@@ -1376,19 +1496,19 @@ class PcInfoAppQt(QMainWindow):
             }}
             QDialog#SetDnsDialog QLineEdit {{
                 background-color: {INPUT_BG};
-                border: 1px solid {INPUT_BORDER_COLOR};
+                border: none; /* Bỏ viền QLineEdit trong dialog DNS */
                 border-radius: 4px;
                 padding: 5px;
                 color: {TEXT_COLOR_PRIMARY};
             }}
             QDialog#SetDnsDialog QLineEdit:focus {{
-                border-color: {ACCENT_COLOR};
+                /* border: 1px solid {ACCENT_COLOR}; */ /* Bỏ viền focus hoặc tùy chỉnh */
             }}
             QDialog#SetDnsDialog QPushButton {{ /* Buttons inside SetDnsDialog (from QDialogButtonBox) */
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {BUTTON_SECONDARY_TEXT};
-                border: 1px solid {BORDER_COLOR_DARK};
-                border-radius: 4px;
+                border: none; /* Bỏ viền nút trong dialog DNS */
+                border-radius: 4px; 
                 padding: 6px 12px;
                 min-width: 70px;
             }}
@@ -1401,13 +1521,13 @@ class PcInfoAppQt(QMainWindow):
             /* Style the OK button in SetDnsDialog as a primary button */
             QDialog#SetDnsDialog QPushButton[text="OK"], QDialog#SetDnsDialog QPushButton[text="&OK"] {{
                 background-color: {BUTTON_PRIMARY_BG};
-                color: white;
+                color: white; 
             }}
             QDialog#SetDnsDialog QPushButton[text="OK"]:hover, QDialog#SetDnsDialog QPushButton[text="&OK"]:hover {{
                 background-color: {BUTTON_PRIMARY_HOVER};
             }}
             QDialog#SetDnsDialog QPushButton[text="OK"]:pressed, QDialog#SetDnsDialog QPushButton[text="&OK"]:pressed {{
-                font-weight: bold;
+                font-weight: bold; 
             }}
             QPushButton#NavToggleHeaderButton {{
                 background-color: transparent;
@@ -1420,10 +1540,29 @@ class PcInfoAppQt(QMainWindow):
             QLabel#AppTitleLabel {{
                 /* Style for app title if needed, e.g., color, padding */
             }}
-        """)
+            QPushButton#OneClickOptimizeButton {{
+                background-color: {ACCENT_COLOR};
+                color: white;
+                padding: 10px 18px; /* Lớn hơn một chút */
+                font-weight: bold;
+            }}
+            QPushButton#OneClickOptimizeButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
+            QPushButton#GamingModeButton {{
+                background-color: {BUTTON_SECONDARY_BG};
+                color: {TEXT_COLOR_PRIMARY};
+            }}
+            QPushButton#GamingModeButton:checked {{
+                background-color: {SECONDARY_COLOR}; /* Green when ON */
+                color: white;
+                font-weight: bold;
+            }}
+            QPushButton#GamingModeButton:hover {{ background-color: {BUTTON_SECONDARY_HOVER}; }}
+            QPushButton#GamingModeButton:checked:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
+       
+        """) # type: ignore
         # Specific button styles (override general QPushButton style)
         self.button_exit.setStyleSheet(f"""
-            QPushButton {{
+            QPushButton {{ 
                 background-color: {BUTTON_DANGER_BG};
                 color: white;
                 border: none;
@@ -1433,7 +1572,7 @@ class PcInfoAppQt(QMainWindow):
         """)
         # self.button_export_csv.setStyleSheet(f"""
         #     QPushButton {{
-        #         background-color: {BUTTON_EXPORT_BG};
+        #         background-color: {BUTTON_EXPORT_BG}; 
         #         color: white;
         #         border: none;
         #     }}
@@ -1444,7 +1583,7 @@ class PcInfoAppQt(QMainWindow):
         # Style for "Refresh" button on Home tab
         if hasattr(self, 'button_refresh_dashboard_qt'):
             self.button_refresh_dashboard_qt.setStyleSheet(f"""
-                QPushButton {{
+                QPushButton {{ 
                     background-color: {BUTTON_PRIMARY_BG};
                     color: white;
                     border: none;
@@ -1456,7 +1595,7 @@ class PcInfoAppQt(QMainWindow):
         # Style for "Save Result" buttons
         common_save_button_style = f"""
             QPushButton {{
-                background-color: {ACCENT_COLOR};
+                background-color: {ACCENT_COLOR}; 
                 color: white;
                 border: none;
             }}
@@ -1464,7 +1603,7 @@ class PcInfoAppQt(QMainWindow):
             QPushButton:pressed {{ background-color: {ACCENT_COLOR_PRESSED}; }}
             QPushButton:disabled {{
                 background-color: {BORDER_COLOR_DARK}; /* Use a color from the new palette */
-                color: {TEXT_COLOR_SECONDARY}; /* Use a color from the new palette */
+                color: {TEXT_COLOR_SECONDARY}; /* Use a color from the new palette */ 
                 border: none;
             }}
         """
@@ -1491,7 +1630,7 @@ class PcInfoAppQt(QMainWindow):
                 padding: 0px;
             }}
             QProgressBar {{
-                border: 1px solid {BORDER_COLOR_DARK};
+                border: none; /* Bỏ viền ProgressBar */
                 border-radius: 5px;
                 text-align: center; /* Center the percentage text */
                 background-color: {INPUT_BG}; /* Background of the unfilled part */
@@ -1631,6 +1770,7 @@ class PcInfoAppQt(QMainWindow):
             self.label_gpu_info.setText("GPU: Đang tải...")
             self.progress_gpu.setValue(0)
             self.label_system_status.setText("Đang kiểm tra trạng thái...")
+            self.label_system_health_score.setText("Điểm Sức Khỏe Hệ Thống: Đang tính...")
         elif current_page == self.page_system_info:
              # Update placeholder text in cards on System Info tab
             card_widgets = [
@@ -1684,6 +1824,11 @@ class PcInfoAppQt(QMainWindow):
             sys_info_dict = self.pc_info_dict.get("SystemInformation", {})
             pc_data = sys_info_dict.get("PC", {})
             screen_data = sys_info_dict.get("Màn hình", [])
+            temps_data = self.pc_info_dict.get("SystemCheckUtilities", {}).get("SystemTemperatures", {})
+
+            # Calculate System Health Score
+            health_score_info = calculate_system_health_score(self.pc_info_dict) # Giả định hàm này trả về dict dạng {'score': 85, 'issues': ['...']}
+
 
             # --- Update Dashboard Tab ---
             if hasattr(self, 'label_cpu_name'): # Check if dashboard elements exist
@@ -1737,6 +1882,16 @@ class PcInfoAppQt(QMainWindow):
                 else:
                     self.label_gpu_info.setText(f"GPU: {NOT_AVAILABLE}")
                     self.progress_gpu.setValue(0)
+                    # Update System Health Score on Dashboard
+                score_val = health_score_info.get('score', 'N/A')
+                score_color = ACCENT_COLOR if isinstance(score_val, int) and score_val < 70 else (SECONDARY_COLOR if isinstance(score_val, int) else TEXT_COLOR_SECONDARY)
+                self.label_system_health_score.setText(f"Điểm Sức Khỏe: <font color='{score_color}'><b>{score_val}</b>/100</font>")
+                # Tooltip for health score can show issues
+                issues_list = health_score_info.get('issues', [])
+                if issues_list:
+                    self.label_system_health_score.setToolTip("Các vấn đề ảnh hưởng điểm:\n- " + "\n- ".join(issues_list))
+                else:
+                    self.label_system_health_score.setToolTip("Không có vấn đề nghiêm trọng nào được phát hiện.")
 
                 # System Status - Cập nhật sau cùng để không làm chậm các progress bar
                 def update_dashboard_status():
@@ -1777,12 +1932,25 @@ class PcInfoAppQt(QMainWindow):
 
                 screen_keys_map = [("Tên", "Tên"), ("Độ phân giải (pixels)", "Đ.P.Giải (px)"), ("Tỷ lệ khung hình", "Tỷ lệ"), ("Kích thước (đường chéo)", "K.Thước"), ("Trạng thái", "Tr.Thái")]
                 QTimer.singleShot(0, lambda d=screen_data: self._populate_card(self.card_screens_info, d, screen_keys_map))
+                # Populate Temperatures Card on System Info Tab
+                def update_temps_card_deferred():
+                    temp_lines_for_card = []
+                    for comp_name, comp_data in temps_data.items():
+                        temp_lines_for_card.append(f"<b>{html.escape(comp_name)}:</b> {html.escape(str(comp_data.get('value', 'N/A')))}{comp_data.get('unit', '°C')}")
+                    self._update_display_widget(self.card_temperatures_info.findChild(QLabel), "<br>".join(temp_lines_for_card) if temp_lines_for_card else "Không có dữ liệu nhiệt độ.")
+                QTimer.singleShot(0, update_temps_card_deferred)
+            
             
             # Kích hoạt nút "Xuất Báo Cáo PC" nếu đang ở tab Báo cáo & Cài đặt
             if self.pages_stack.currentWidget() == self.page_report_settings:
                 self.button_save_active_tab_result.setEnabled(True)
             elif self.pages_stack.currentWidget() == self.page_dashboard: # Kích hoạt nút làm mới dashboard
                 self.button_refresh_dashboard_qt.setEnabled(True)
+                # Update Windows Update status on Update Center tab if it's already created
+            if hasattr(self, 'label_windows_update_status'):
+                 # This would ideally be a separate call, but for now, piggyback on pc_info
+                self.on_check_windows_update_clicked(fetch_only=True) # Call to update status
+
         
     def _on_task_error(self, task_name, error_message):
         logging.error(f"Error in task '{task_name}': {error_message}")
@@ -1798,6 +1966,8 @@ class PcInfoAppQt(QMainWindow):
                 self.progress_cpu.setValue(0)
                 # ... (tương tự cho RAM, SSD, GPU)
                 self.label_system_status.setText(f"<font color='{BUTTON_DANGER_BG}'>❌ Lỗi khi tải dữ liệu</font>")
+                self.label_system_health_score.setText("Điểm Sức Khỏe: Lỗi")
+            
             if hasattr(self, 'card_general_info'): # System Info tab elements
                 card_widgets = [
                     self.card_general_info, self.card_os_info, self.card_cpu_info, 
@@ -1819,6 +1989,9 @@ class PcInfoAppQt(QMainWindow):
                 target_stacked_widget = self.stacked_widget_results_optimize
             elif task_name.startswith("network_") and hasattr(self, 'stacked_widget_results_network'):
                 target_stacked_widget = self.stacked_widget_results_network
+            elif task_name.startswith("update_") and hasattr(self, 'stacked_widget_results_update_center'):
+                target_stacked_widget = self.stacked_widget_results_update_center
+            
             # Add other task prefixes and their corresponding stacked_widgets here
 
             if target_stacked_widget:
@@ -2246,6 +2419,10 @@ class PcInfoAppQt(QMainWindow):
         if hasattr(self, 'stacked_widget_results_network'):
             text_edit_net = self.stacked_widget_results_network.widget(0).findChild(QTextEdit)
             if text_edit_net: self._clear_text_highlights(text_edit_net)
+        if hasattr(self, 'stacked_widget_results_update_center'):
+            text_edit_update = self.stacked_widget_results_update_center.widget(0).findChild(QTextEdit)
+            if text_edit_update: self._clear_text_highlights(text_edit_update)
+        
         
         # If System Info tab has searchable text areas, clear their highlights too
         # if current_page_widget == self.page_system_info:
@@ -2380,6 +2557,10 @@ class PcInfoAppQt(QMainWindow):
         elif current_page_widget == self.page_network:
             self.button_save_active_tab_result.setText("Lưu Kết Quả Mạng")
             self._update_save_button_state_for_tab_content(self.stacked_widget_results_network)
+        elif current_page_widget == self.page_update_center:
+            self.button_save_active_tab_result.setText("Lưu Kết Quả Cập Nhật")
+            self._update_save_button_state_for_tab_content(self.stacked_widget_results_update_center)
+        
         elif current_page_widget == self.page_report_settings:
             self.button_save_active_tab_result.setText("Xuất Báo Cáo PC")
             self.button_save_active_tab_result.setVisible(True)
@@ -2391,10 +2572,14 @@ class PcInfoAppQt(QMainWindow):
         current_page_widget = self.pages_stack.currentWidget()
         if current_page_widget == self.page_report_settings: # Export PC Report from this tab
             self.on_export_info_qt()
-        elif current_page_widget == self.page_utilities: # Added condition for utilities tab
-            self._save_generic_tab_result(self.stacked_widget_results_utilities, "KetQua_TienIch")
-        elif current_page_widget == self.page_fixes:
-            self._save_generic_tab_result(self.stacked_widget_results_fixes, "KetQua_SuaLoi")
+        elif current_page_widget == self.page_security:
+            self._save_generic_tab_result(self.stacked_widget_results_security, "KetQua_BaoMat")
+        elif current_page_widget == self.page_optimize:
+            self._save_generic_tab_result(self.stacked_widget_results_optimize, "KetQua_ToiUu")
+        elif current_page_widget == self.page_network:
+            self._save_generic_tab_result(self.stacked_widget_results_network, "KetQua_Mang")
+        elif current_page_widget == self.page_update_center:
+            self._save_generic_tab_result(self.stacked_widget_results_update_center, "KetQua_CapNhat")
         else:
             QMessageBox.information(self, "Thông báo", "Không có kết quả nào để lưu từ tab hiện tại.")
     def _save_generic_tab_result(self, stacked_widget_results, default_prefix="KetQua"):
@@ -2430,6 +2615,102 @@ class PcInfoAppQt(QMainWindow):
             QMessageBox.critical(self, "Lỗi Không Xác Định", f"Đã xảy ra lỗi không mong muốn khi lưu kết quả: {e}")
             logging.exception("Lỗi không xác định khi lưu kết quả tab:")
             self._update_status_bar(f"Lỗi lưu kết quả tab: {str(e)[:100]}...", "error")
+            # --- New Slot Methods for New Features ---
+    def on_one_click_optimize_clicked(self):
+        reply = QMessageBox.question(self, "Xác nhận Tối ưu hóa",
+                                     "Bạn có chắc muốn chạy tối ưu hóa toàn diện?\n"
+                                     "Các tác vụ bao gồm: Xóa file tạm, xóa cache DNS, và có thể đề xuất tối ưu services, dọn dẹp registry (sẽ hỏi lại).",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            # This will be a complex task, potentially running multiple sub-tasks
+            # For now, let's assume a single core function `run_one_click_optimization` handles this
+            # and reports progress/results.
+            # from core.pc_info_functions import run_one_click_optimization # Placeholder
+            # self._run_task_in_thread_qt(self.button_one_click_optimize, self.stacked_widget_results_optimize,
+            #                             run_one_click_optimization, "optimize_one_click")
+            self._update_display_widget(self.stacked_widget_results_optimize.widget(0).findChild(QTextEdit),
+                                        html.escape("Chức năng Tối ưu hóa 1-Click đang được phát triển.\n"
+                                                    "Nó sẽ bao gồm:\n"
+                                                    "- Xóa file tạm (clear_temporary_files)\n"
+                                                    "- Xóa DNS cache (flush_dns_cache)\n"
+                                                    "- Tùy chọn: Tối ưu services (optimize_windows_services)\n"
+                                                    "- Tùy chọn: Dọn dẹp registry (clean_registry_with_backup)"))
+            self._update_status_bar("Tối ưu hóa 1-Click (Demo)", "info")
+
+    def on_toggle_gaming_mode_clicked(self, checked):
+        mode_text = "BẬT" if checked else "TẮT"
+        self.button_toggle_gaming_mode.setText(f"🎮 Chế Độ Gaming: {mode_text}")
+        # self._run_task_in_thread_qt(self.button_toggle_gaming_mode, self.stacked_widget_results_optimize,
+        #                             apply_gaming_mode, f"optimize_gaming_mode_{mode_text.lower()}", task_args=[checked])
+        self._update_display_widget(self.stacked_widget_results_optimize.widget(0).findChild(QTextEdit),
+                                    html.escape(f"Chế độ Gaming đã được chuyển sang {mode_text}.\n"
+                                                "Chức năng này đang được phát triển và sẽ bao gồm các tối ưu như:\n"
+                                                "- Thay đổi kế hoạch nguồn (Power Plan)\n"
+                                                "- Tạm dừng các dịch vụ không cần thiết (cần xác định danh sách an toàn)\n"
+                                                "- Các tinh chỉnh khác để ưu tiên hiệu năng cho game."))
+        self._update_status_bar(f"Chế độ Gaming: {mode_text}", "info")
+
+    def on_manage_startup_programs_clicked(self, button_clicked):
+        # Khi nhấn nút "Quản Lý Ứng Dụng Khởi Động"
+        self.startup_manager_buttons_frame.setVisible(True) # Hiện các nút Bật/Tắt
+        self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_optimize,
+                                    get_startup_programs, "optimize_startup_list",
+                                    needs_wmi=True, result_type="table")
+
+    def on_manage_selected_startup_item(self, action): # action: "enable", "disable", "delete"
+        current_table = self.stacked_widget_results_optimize.widget(1)
+        if not isinstance(current_table, QTableWidget) or self.stacked_widget_results_optimize.currentIndex() != 1:
+            QMessageBox.warning(self, "Lỗi", "Không tìm thấy bảng quản lý khởi động hoặc bảng không được hiển thị.")
+            return
+
+        selected_items = current_table.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "Chưa chọn", "Vui lòng chọn một mục trong danh sách khởi động.")
+            return
+
+        # Giả sử cột đầu tiên (index 0) là tên chương trình hoặc một định danh duy nhất
+        # Và cần thêm thông tin về 'path' hoặc 'key' để hàm core xử lý
+        # Hàm get_startup_programs cần trả về đủ thông tin này.
+        # Đây là ví dụ, bạn cần điều chỉnh dựa trên dữ liệu thực tế từ get_startup_programs
+        selected_row = selected_items[0].row()
+        item_name = current_table.item(selected_row, 0).text() # Giả sử cột 0 là tên
+        # item_path_or_key = current_table.item(selected_row, X).text() # Cần cột chứa path/key
+
+        # Placeholder: Cần hàm core `manage_startup_item(name, path_or_key, action)`
+        # self._run_task_in_thread_qt(self.sender(), self.stacked_widget_results_optimize,
+        #                             manage_startup_item, f"optimize_startup_{action}_{item_name}",
+        #                             task_args=[item_name, item_path_or_key, action])
+        QMessageBox.information(self, "Đang phát triển",
+                                f"Chức năng '{action}' cho mục '{item_name}' đang được phát triển.\n"
+                                "Sẽ cần quyền Administrator để thay đổi cài đặt khởi động.")
+        # Sau khi hoàn thành, nên làm mới danh sách:
+        # self.on_manage_startup_programs_clicked(self.sender()) # Hoặc nút gốc đã gọi
+
+    def on_check_windows_update_clicked(self, checked=False, fetch_only=False): # Thêm fetch_only
+        if not fetch_only:
+            try:
+                import webbrowser
+                webbrowser.open("ms-settings:windowsupdate")
+            except Exception as e:
+                logging.error(f"Không thể mở cài đặt Windows Update: {e}")
+                QMessageBox.warning(self, "Lỗi", f"Không thể mở cài đặt Windows Update tự động.\nVui lòng mở thủ công: Settings > Update & Security > Windows Update.\nLỗi: {e}")
+
+        # Lấy và hiển thị trạng thái (ngay cả khi chỉ fetch_only)
+        # Giả sử get_windows_update_status trả về một dict {'status': 'Up to date', 'last_checked': '...'}
+        # Cần một WorkerThread để không block GUI nếu get_windows_update_status chậm
+        thread_wu_status = WorkerThread(get_windows_update_status, "update_wu_status_check")
+        def _on_wu_status_complete(task_name, data):
+            if task_name == "update_wu_status_check" and hasattr(self, 'label_windows_update_status'):
+                status_text = data.get('status', 'Không xác định')
+                last_checked = data.get('last_checked', 'N/A')
+                self.label_windows_update_status.setText(f"Trạng thái Windows Update: {status_text} (Kiểm tra lần cuối: {last_checked})")
+        def _on_wu_status_error(task_name, error_msg):
+             if hasattr(self, 'label_windows_update_status'):
+                self.label_windows_update_status.setText(f"Trạng thái Windows Update: Lỗi khi kiểm tra ({error_msg[:50]}...)")
+        thread_wu_status.task_completed.connect(_on_wu_status_complete)
+        thread_wu_status.task_error.connect(_on_wu_status_error)
+        self.threads.append(thread_wu_status)
+        thread_wu_status.start()
 
 # Khối main để chạy thử trực tiếp file này (nếu cần)
 # if __name__ == "__main__":

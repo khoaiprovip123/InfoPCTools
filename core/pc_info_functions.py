@@ -2037,6 +2037,115 @@ def set_dns_servers(wmi_service, primary_dns, secondary_dns=None):
         logging.exception("Lỗi không xác định khi cấu hình DNS:")
         return {"status": "Lỗi", "message": f"Lỗi không mong muốn: {str(e)}"}
 
+def list_upgradable_winget_packages():
+    """
+    Liệt kê các gói phần mềm có thể cập nhật thông qua winget.
+    """
+    logging.info("Đang liệt kê các gói có thể cập nhật qua winget...")
+    try:
+        # Chạy lệnh 'winget upgrade' để liệt kê các gói có thể cập nhật
+        # Thêm --accept-source-agreements để tự động chấp nhận các thỏa thuận nguồn nếu có
+        process = subprocess.run(
+            ["winget", "upgrade", "--accept-source-agreements"],
+            capture_output=True, text=True, encoding='utf-8', errors='ignore',
+            timeout=60, creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+        if process.returncode == 0:
+            output = process.stdout.strip()
+            if not output or "No applicable update found" in output or "Không tìm thấy bản cập nhật nào" in output:
+                return {"status": "info", "message": "Không có ứng dụng nào cần cập nhật qua winget.", "details": output}
+            return {"status": "success", "message": "Danh sách các ứng dụng có thể cập nhật:", "details": output}
+        else:
+            error_details = process.stderr.strip() or process.stdout.strip() or "Lỗi không xác định từ winget."
+            logging.error(f"Lệnh 'winget upgrade' (để liệt kê) thất bại. Code: {process.returncode}, Lỗi: {error_details}")
+            return {"status": "error", "message": f"Không thể liệt kê các gói cập nhật từ winget. Lỗi: {error_details}", "details": error_details}
+    except FileNotFoundError:
+        logging.warning("'winget' không được tìm thấy. Vui lòng cài đặt App Installer từ Microsoft Store.")
+        return {"status": "error", "message": "'winget' không được tìm thấy. Vui lòng cài đặt App Installer từ Microsoft Store."}
+    except (subprocess.TimeoutExpired, Exception) as e:
+        logging.error(f"Lỗi khi chạy 'winget upgrade' (để liệt kê): {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi khi liệt kê các gói cập nhật từ winget: {str(e)}"}
+
+def calculate_system_health_score(pc_info_dict):
+    """
+    Tính toán điểm sức khỏe hệ thống dựa trên pc_info_dict.
+    Đây là một placeholder, cần logic chi tiết hơn.
+    """
+    score = 100
+    issues = []
+
+    if not pc_info_dict:
+        return {"score": 0, "issues": ["Không có dữ liệu PC để tính điểm."]}
+
+    # Ví dụ kiểm tra:
+    # 1. Trạng thái kích hoạt Windows
+    activation_status = pc_info_dict.get("SystemInformation", {}).get("PC", {}).get("Trạng thái kích hoạt Windows", "")
+    if activation_status != "Đã kích hoạt":
+        score -= 10
+        issues.append(f"Windows chưa được kích hoạt (Trạng thái: {activation_status}).")
+
+    # 2. Dung lượng ổ đĩa C: (ví dụ)
+    disk_usage = pc_info_dict.get("SystemCheckUtilities", {}).get("Dung lượng ổ đĩa", [])
+    for disk in disk_usage:
+        if disk.get("Ổ đĩa") == "C:":
+            percent_free = disk.get("Tỷ lệ trống (%)", 100)
+            if isinstance(percent_free, (int, float)) and percent_free < 10:
+                score -= 15
+                issues.append(f"Ổ C: còn dưới 10% dung lượng trống ({percent_free}%).")
+            elif isinstance(percent_free, (int, float)) and percent_free < 20:
+                score -= 5
+                issues.append(f"Ổ C: còn dưới 20% dung lượng trống ({percent_free}%).")
+            break
+
+    # 3. Lỗi Event Log (ví dụ)
+    event_summary = pc_info_dict.get("SystemCheckUtilities", {}).get("Tóm tắt Event Log gần đây", {})
+    system_errors = event_summary.get("System", {}).get("Errors", 0)
+    app_errors = event_summary.get("Application", {}).get("Errors", 0)
+    if system_errors > 10 or app_errors > 10: # Ngưỡng ví dụ
+        score -= 5
+        issues.append(f"Có nhiều lỗi trong Event Log (System: {system_errors}, Application: {app_errors}).")
+
+    return {"score": max(0, score), "issues": issues}
+
+def apply_gaming_mode(enable=True):
+    """
+    Placeholder function to apply or revert gaming mode optimizations.
+    """
+    action = "BẬT" if enable else "TẮT"
+    logging.info(f"Chế độ Gaming đang được chuyển sang: {action}")
+    # Logic thực tế cho Gaming Mode sẽ được thêm ở đây. Ví dụ:
+    # - Thay đổi Power Plan
+    # - Tạm dừng các services không cần thiết
+    # - Tối ưu hóa network settings
+    return {"status": "info", "message": f"Chế độ Gaming đã được {action} (chức năng đang phát triển)."}
+
+def manage_startup_item(item_identifier, action):
+    """
+    Placeholder function to manage (enable/disable/delete) a startup item.
+    'item_identifier' could be the name, path, or registry key.
+    'action' could be "enable", "disable", "delete".
+    This function will require Administrator privileges for most actions.
+    """
+    logging.info(f"Yêu cầu {action} mục khởi động: {item_identifier} (chức năng đang phát triển).")
+    if not is_admin():
+        return {"status": "error", "message": f"Yêu cầu quyền Administrator để {action} mục khởi động."}
+    
+    # Logic thực tế để quản lý mục khởi động sẽ được thêm ở đây.
+    return {"status": "info", "message": f"Chức năng '{action}' cho mục '{item_identifier}' đang được phát triển."}
+
+def get_windows_update_status(wmi_service=None):
+    """
+    Placeholder function to get Windows Update status.
+    A real implementation might use WMI (MSFT_WUOperations) or PowerShell (Get-WUHistory).
+    """
+    logging.info("Kiểm tra trạng thái Windows Update (chức năng đang phát triển).")
+    # Logic thực tế sẽ được thêm ở đây.
+    return {
+        "status": "Chưa kiểm tra",
+        "last_checked": "N/A",
+        "details": "Chức năng kiểm tra trạng thái Windows Update đang được phát triển."
+    }
     # --- Hàm lấy tình trạng ổ cứng (S.M.A.R.T. cơ bản) ---
 def get_disk_health_status(wmi_service):
     """
