@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QCheckBox
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor, QTextCharFormat, QTextCursor
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize # Import QSize
+from PyQt5.QtCore import Qt, QTimer, QSize # Import QSize, QThread, pyqtSignal removed
 
 import win32com.client # For CoInitialize/CoUninitialize in threads
 
@@ -53,80 +53,25 @@ from core.pc_info_manager import (
     format_pc_info_to_string, format_system_details_to_string,
     format_user_info_for_display # Import hàm này
 )
-
+# Import WorkerThread từ file mới
+from .gui_worker import WorkerThread
+# Import các hàm tạo giao diện tab từ các file riêng
+from .gui_dashboard_tab import create_dashboard_tab_content # type: ignore
+# Thêm import cho các file tab khác khi bạn tạo chúng:
+from .gui_system_info_tab import create_system_info_tab_content # type: ignore #Đã có
+from .gui_security_tab import create_security_tab_content # type: ignore #Đã có
+# from .gui_optimize_tab import create_optimize_tab_content
+# from .gui_network_tab import create_network_tab_content #Đã có
+# from .gui_update_center_tab import create_update_center_tab_content
+# from .gui_report_settings_tab import create_report_settings_tab_content
+from .gui_optimize_tab import create_optimize_tab_content # type: ignore
+from .gui_network_tab import create_network_tab_content # type: ignore
 # --- Cấu hình Logging ---
+# from .gui_update_center_tab import create_update_center_tab_content # Thêm dòng này khi bạn tạo file
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # Logging nên được cấu hình ở main.py để tránh ghi đè hoặc xung đột
-
-# --- Constants for UI Styling (Có thể dùng QSS sau) ---
-DEFAULT_FONT_FAMILY = "Roboto"
-MONOSPACE_FONT_FAMILY = "Consolas"
-MONOSPACE_FONT_SIZE = 9
-HIGHLIGHT_COLOR = QColor(255, 236, 179) # Material Amber A100 (FFECB3) for text search
-H1_FONT_SIZE = 16
-H2_FONT_SIZE = 12
-BODY_FONT_SIZE = 10
-
-
-# New Color Palette (Material Design inspired)
-PRIMARY_COLOR = "#2196F3"  # Xanh dương (Blue)
-SECONDARY_COLOR = "#4CAF50" # Xanh lá (Green)
-ACCENT_COLOR = "#FF9800"   # Cam (Orange)
-
-WINDOW_BG = "#E3F2FD"        # Light Blue 50 (Main background, derived from Primary)
-FRAME_BG = "#FFFFFF"         # White (For content containers like tab panes - kept)
-GROUPBOX_BG = "#FFFFFF"      # White (Background for GroupBoxes - kept)
-TEXT_COLOR_PRIMARY = "#212121" # Dark Grey (Good contrast)
-TEXT_COLOR_SECONDARY = "#757575" # Medium Grey
-
-BORDER_COLOR_LIGHT = "#BBDEFB" # Light Blue 100 (Derived from Primary)
-BORDER_COLOR_DARK = "#90CAF9"  # Light Blue 200 (Derived from Primary, for scrollbar handles etc.)
-
-ACCENT_COLOR_HOVER = "#FFA726"  # Orange 400 (Derived from Accent)
-ACCENT_COLOR_PRESSED = "#FB8C00" # Orange 600 (Derived from Accent)
-
-BUTTON_PRIMARY_BG = PRIMARY_COLOR
-BUTTON_PRIMARY_HOVER = "#1E88E5"  # Blue 600 (Derived from Primary)
-BUTTON_PRIMARY_PRESSED = "#1976D2" # Blue 700 (Derived from Primary)
-
-BUTTON_SECONDARY_BG = "#E0E0E0" # Grey 300 (Neutral secondary button)
-BUTTON_SECONDARY_HOVER = "#BDBDBD" # Grey 400
-BUTTON_SECONDARY_PRESSED = "#9E9E9E" # Grey 500
-BUTTON_SECONDARY_TEXT = TEXT_COLOR_PRIMARY
-
-BUTTON_EXPORT_BG = SECONDARY_COLOR
-BUTTON_EXPORT_HOVER = "#43A047" # Green 600 (Darker shade of Secondary)
-BUTTON_EXPORT_PRESSED = "#388E3C" # Green 700 (Even darker shade of Secondary)
-
-BUTTON_DANGER_BG = "#F44336"  # Red 500
-BUTTON_DANGER_HOVER = "#E53935" # Red 600
-
-INPUT_BG = "#FFFFFF"         # Background for QLineEdit, QComboBox, etc.
-INPUT_BORDER_COLOR = "#BDBDBD" # Grey 400 for input borders (Neutral)
-
-TAB_BG_INACTIVE = "#90CAF9" # Light Blue 200 (Derived from Primary, same as BORDER_COLOR_DARK)
-
-TAB_BG_ACTIVE = FRAME_BG    # White, same as pane
-TAB_TEXT_INACTIVE = TEXT_COLOR_PRIMARY
-TAB_TEXT_ACTIVE = ACCENT_COLOR # Orange for active tab text
-
-# HTML text colors (used in _update_display_widget)
-DEFAULT_TEXT_COLOR_HTML = TEXT_COLOR_PRIMARY
-ERROR_TEXT_COLOR_HTML = BUTTON_DANGER_BG
-
-# Toast Notification Colors
-TOAST_INFO_BG = "rgba(33, 150, 243, 220)"  # Blue (Primary Color with alpha)
-TOAST_SUCCESS_BG = "rgba(76, 175, 80, 220)" # Green (Secondary Color with alpha)
-TOAST_ERROR_BG = "rgba(244, 67, 54, 220)"   # Red (Danger Color with alpha)
-TOAST_TEXT_COLOR = "white"
-
-# --- Status Bar Colors ---
-STATUS_BAR_INFO_BG = "#BBDEFB"  # Light Blue 100
-STATUS_BAR_SUCCESS_BG = "#C8E6C9" # Green 100
-STATUS_BAR_WARNING_BG = "#FFF9C4" # Yellow 100
-STATUS_BAR_ERROR_BG = "#FFCDD2"   # Red 100
-STATUS_BAR_TEXT_COLOR = "#212121" # Dark Grey
-# class PcInfoAppQt(QMainWindow): # Forward declaration removed or ensure constants are in the main class
+from .gui_report_settings_tab import create_report_settings_tab_content # type: ignore #Đã có
+from .gui_constants import * # Import tất cả hằng số từ file mới
 
 
 class ToastNotification(QLabel):
@@ -200,61 +145,6 @@ def resource_path(relative_path):
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     return os.path.join(base_path, relative_path)
 
-# --- Lớp QThread cho các tác vụ chạy nền ---
-class WorkerThread(QThread):
-    task_completed = pyqtSignal(str, object) # task_name, result_data
-    task_error = pyqtSignal(str, str)       # task_name, error_message
-
-    def __init__(self, task_function, task_name, needs_wmi=False, wmi_namespace="root\\CIMV2", *args, **kwargs):
-        super().__init__()
-        self.task_function = task_function
-        self.task_name = task_name
-        self.needs_wmi = needs_wmi
-        self.button_to_manage = kwargs.pop('button_to_manage', None) # Get the button
-        self.original_button_text = kwargs.pop('original_button_text', "")
-        self.wmi_namespace = wmi_namespace # Namespace WMI cần thiết cho tác vụ
-        self.args = args
-        self.kwargs = kwargs
-        self.wmi_service_local = None
-        self.com_initialized_local = False
-
-    def run(self):
-        if self.button_to_manage:
-            self.button_to_manage.setEnabled(False)
-            self.button_to_manage.setText("Đang xử lý...")
-
-        result_data = None
-        try:
-            if self.needs_wmi:
-                win32com.client.pythoncom.CoInitialize()
-                self.com_initialized_local = True
-                wmi_locator = win32com.client.Dispatch("WbemScripting.SWbemLocator")
-                self.wmi_service_local = wmi_locator.ConnectServer(".", self.wmi_namespace)
-                logging.info(f"WMI connected to {self.wmi_namespace} in thread for task: {self.task_name}")
-
-                if not self.wmi_service_local:
-                    self.task_error.emit(self.task_name, f"{ERROR_WMI_CONNECTION} for task {self.task_name}")
-                    return
-                result_data = self.task_function(self.wmi_service_local, *self.args, **self.kwargs)
-            else:
-                result_data = self.task_function(*self.args, **self.kwargs)
-
-            self.task_completed.emit(self.task_name, result_data)
-
-        except Exception as e:
-            logging.exception(f"Error in worker thread for task {self.task_name}:")
-            self.task_error.emit(self.task_name, str(e))
-        finally:
-            if self.com_initialized_local:
-                try:
-                    win32com.client.pythoncom.CoUninitialize()
-                    logging.info(f"COM uninitialized in thread for task: {self.task_name}")
-                except Exception as com_e:
-                    logging.error(f"Error uninitializing COM in thread for {self.task_name}: {com_e}")
-            if self.button_to_manage:
-                self.button_to_manage.setText(self.original_button_text)
-                self.button_to_manage.setEnabled(True)
-
 class SetDnsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -302,8 +192,8 @@ class PcInfoAppQt(QMainWindow):
     }
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Tối Ưu PC Pro") # Đổi tên ứng dụng
-        self.setGeometry(100, 100, 950, 800) # Tăng kích thước một chút
+        self.setWindowTitle("PC Pro - System Optimizer") # New app title
+        self.setGeometry(100, 100, 1200, 800) # Adjusted size for new layout
 
         self.h1_font = QFont(DEFAULT_FONT_FAMILY, H1_FONT_SIZE, QFont.Bold)
         self.h2_font = QFont(DEFAULT_FONT_FAMILY, H2_FONT_SIZE, QFont.Bold)
@@ -316,8 +206,8 @@ class PcInfoAppQt(QMainWindow):
         # self.formatted_pc_info_string_home = "Chưa lấy thông tin." # No longer needed as we populate cards
         self.current_table_data = None # To store data for CSV export
 
-        self.NAV_EXPANDED_WIDTH = 200
-        self.NAV_COLLAPSED_WIDTH = 55 # Adjusted for icon + padding
+        self.NAV_EXPANDED_WIDTH = 280 # From HTML
+        self.NAV_COLLAPSED_WIDTH = 70 # Icon + padding
         self.nav_panel_is_collapsed = False
         self.nav_is_collapsed = False # State for navigation panel
 
@@ -337,11 +227,11 @@ class PcInfoAppQt(QMainWindow):
             logo_relative_path = os.path.join("assets", "logo", "hpc-logo.png")
             logo_path = resource_path(logo_relative_path)
             if os.path.exists(logo_path):
-                self.logo_pixmap = QPixmap(logo_path)
-                if not self.logo_pixmap.isNull():
-                    self.logo_pixmap = self.logo_pixmap.scaled(70, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                raw_pixmap = QPixmap(logo_path)
+                if not raw_pixmap.isNull():
+                    self.logo_pixmap = raw_pixmap.scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation) # Smaller logo for sidebar
                 else:
-                    logging.warning(f"Không thể tải QPixmap từ: {logo_path}")
+                    logging.warning(f"Could not load QPixmap from: {logo_path}")
                     self.logo_pixmap = None
             else:
                 logging.warning(f"Không tìm thấy file logo tại: {logo_path}")
@@ -356,25 +246,56 @@ class PcInfoAppQt(QMainWindow):
 
     def _create_widgets(self):
         self.central_widget = QWidget()
+        self.central_widget.setObjectName("CentralWidget")
         self.setCentralWidget(self.central_widget)
-        self.main_layout = QVBoxLayout(self.central_widget)
-        self.main_layout.setContentsMargins(10,10,10,10) # Khoảng cách từ các cạnh cửa sổ
-        self.main_layout.setSpacing(10) # Khoảng cách giữa header, splitter, footer
+        # Main layout is now QHBoxLayout for sidebar + main_content_container
+        self.main_app_layout = QHBoxLayout(self.central_widget)
+        self.main_app_layout.setContentsMargins(0,0,0,0) # Container fills window
+        self.main_app_layout.setSpacing(0)
 
-        # --- Top Header Bar (New) ---
-        top_header_bar = QFrame()
-        top_header_bar.setObjectName("TopHeaderBar")
-        top_header_layout = QHBoxLayout(top_header_bar)
-        top_header_layout.setContentsMargins(5, 5, 10, 5)
-        top_header_layout.setSpacing(10)
+        # --- Sidebar ---
+        self.sidebar_widget = QWidget()
+        self.sidebar_widget.setObjectName("Sidebar")
+        self.sidebar_widget.setFixedWidth(self.NAV_EXPANDED_WIDTH)
+        sidebar_layout = QVBoxLayout(self.sidebar_widget)
+        sidebar_layout.setContentsMargins(0, 20, 0, 20) # Top/bottom padding
+        sidebar_layout.setSpacing(10)
 
-        # Navigation Toggle Button (Moved to Header)
-        self.button_toggle_nav_header = QPushButton()
-        self.button_toggle_nav_header.setCursor(Qt.PointingHandCursor)
-        self.button_toggle_nav_header.setObjectName("NavToggleHeaderButton")
-        self.button_toggle_nav_header.clicked.connect(self._toggle_nav_panel_visibility)
-        self.button_toggle_nav_header.setFixedSize(35, 35) # Kích thước cho nút icon
-        top_header_layout.addWidget(self.button_toggle_nav_header)
+        # Sidebar: Logo Area
+        logo_area_widget = QWidget()
+        logo_area_layout = QVBoxLayout(logo_area_widget)
+        logo_area_layout.setContentsMargins(20,0,20,20) # Padding for logo area
+        logo_area_layout.setAlignment(Qt.AlignCenter)
+
+        if self.logo_pixmap:
+            self.app_logo_label = QLabel()
+            self.app_logo_label.setPixmap(self.logo_pixmap)
+            self.app_logo_label.setAlignment(Qt.AlignCenter)
+            logo_area_layout.addWidget(self.app_logo_label)
+
+        self.app_title_label_sidebar = QLabel("PC Pro")
+        self.app_title_label_sidebar.setObjectName("SidebarAppTitle")
+        self.app_title_label_sidebar.setAlignment(Qt.AlignCenter)
+        logo_area_layout.addWidget(self.app_title_label_sidebar)
+
+        self.app_subtitle_label_sidebar = QLabel("System Optimizer")
+        self.app_subtitle_label_sidebar.setObjectName("SidebarAppSubtitle")
+        self.app_subtitle_label_sidebar.setAlignment(Qt.AlignCenter)
+        logo_area_layout.addWidget(self.app_subtitle_label_sidebar)
+        sidebar_layout.addWidget(logo_area_widget)
+
+        # Sidebar: Navigation List
+        self.nav_list_widget = QListWidget()
+        self.nav_list_widget.setObjectName("NavList")
+        sidebar_layout.addWidget(self.nav_list_widget, 1) # Takes available space
+
+        # Sidebar: Navigation Toggle Button (at the bottom or top of sidebar)
+        self.button_toggle_nav_sidebar = QPushButton() # Renamed
+        self.button_toggle_nav_sidebar.setCursor(Qt.PointingHandCursor)
+        self.button_toggle_nav_sidebar.setObjectName("NavToggleSidebarButton")
+        self.button_toggle_nav_sidebar.clicked.connect(self._toggle_nav_panel_visibility)
+        self.button_toggle_nav_sidebar.setFixedHeight(40)
+        sidebar_layout.addWidget(self.button_toggle_nav_sidebar)
 
         try:
             self.icon_collapse_nav = QIcon(resource_path(os.path.join("assets", "icons", "menu_collapse.png"))) # e.g. left arrow or hamburger
@@ -382,67 +303,49 @@ class PcInfoAppQt(QMainWindow):
         except Exception as e:
             logging.warning(f"Không thể tải icon cho nút thu/gọn thanh điều hướng: {e}")
 
-        # App Logo (Thêm logo trước)
-        if self.logo_pixmap:
-            self.logo_label = QLabel()
-            self.logo_label.setPixmap(self.logo_pixmap)
-            self.logo_label.setContentsMargins(5,0,5,0)
-            top_header_layout.addWidget(self.logo_label)
+        self.main_app_layout.addWidget(self.sidebar_widget)
 
-        top_header_layout.addStretch(1) # Push search to the right
+        # --- Main Content Container ---
+        main_content_container = QWidget()
+        main_content_container.setObjectName("MainContentContainer")
+        self.main_content_layout = QVBoxLayout(main_content_container) # QVBoxLayout for header + stacked_widget + global_buttons
+        self.main_content_layout.setContentsMargins(20, 20, 20, 20) # Padding for main content area
+        self.main_content_layout.setSpacing(20)
 
-        # Global Search Bar (Moved to Header)
-        self.search_bar_container = QWidget()
-        search_bar_layout = QHBoxLayout(self.search_bar_container)
-        search_bar_layout.setContentsMargins(0,0,0,0) # No margins for search bar container itself
+        # Main Content: Page Header
+        self.page_header_widget = QWidget()
+        self.page_header_widget.setObjectName("PageHeader")
+        page_header_layout = QHBoxLayout(self.page_header_widget)
+        page_header_layout.setContentsMargins(15, 10, 15, 10) # Padding inside header
+
+        self.page_title_label = QLabel("Dashboard") # Will be updated
+        self.page_title_label.setObjectName("PageTitleLabel")
+        page_header_layout.addWidget(self.page_title_label, 1, Qt.AlignLeft) # Stretch factor
+
+        # Global Search Input (moved to page header)
         self.global_search_input = QLineEdit()
         self.global_search_input.setFont(self.body_font)
         self.global_search_input.setPlaceholderText("Tìm kiếm...")
         self.global_search_input.textChanged.connect(lambda: self.global_search_timer.start(300))
-        search_bar_layout.addWidget(self.global_search_input)
-        self.search_bar_container.setFixedWidth(250) # Set a fixed width for search bar
-        self.search_bar_container.setVisible(False) # Initially hidden, shown by _on_navigation_changed
-        top_header_layout.addWidget(self.search_bar_container)
+        self.global_search_input.setFixedWidth(250)
+        self.global_search_input.setVisible(False) # Initially hidden
+        page_header_layout.addWidget(self.global_search_input, 0, Qt.AlignCenter) # No stretch
 
-        self.main_layout.addWidget(top_header_bar)
-
-        # --- Main content area with Side Navigation and StackedWidget ---
-        self.main_content_splitter = QSplitter(Qt.Horizontal) # Assign to self
-        self.main_layout.addWidget(self.main_content_splitter, 1) # Add splitter with stretch factor
-
-        # --- Left: Navigation Panel (Container for List and Toggle Button) ---
-        left_nav_panel_widget = QWidget()
-        left_nav_panel_layout = QVBoxLayout(left_nav_panel_widget)
-        left_nav_panel_layout.setContentsMargins(0,0,0,0)
-        left_nav_panel_layout.setSpacing(0) # No spacing between list and button
-
-        self.nav_list_widget = QListWidget()
-        self.nav_list_widget.setFont(self.h2_font) # Use H2 font for nav items
-        # self.nav_list_widget.setFixedWidth(self.NAV_EXPANDED_WIDTH) # Width will be controlled by splitter
-        self.nav_list_widget.setObjectName("NavList")
-        left_nav_panel_layout.addWidget(self.nav_list_widget, 1) # List takes available space
-
-
-        self.main_content_splitter.addWidget(left_nav_panel_widget)
-
-        # --- Right: Content Area (Search + StackedWidget) ---
-        right_pane_widget = QWidget()
-        right_pane_layout = QVBoxLayout(right_pane_widget)
-        right_pane_layout.setContentsMargins(0,0,0,0) # No margins for the container itself
-        right_pane_layout.setSpacing(5)
-
+        self.health_score_label = QLabel("🎯 Điểm Sức Khỏe: --/100")
+        self.health_score_label.setObjectName("HealthScoreLabel")
+        page_header_layout.addWidget(self.health_score_label, 1, Qt.AlignRight) # Stretch factor
+        self.main_content_layout.addWidget(self.page_header_widget)
 
         self.pages_stack = QStackedWidget()
-        right_pane_layout.addWidget(self.pages_stack, 1) # StackedWidget takes remaining space
+        self.main_content_layout.addWidget(self.pages_stack, 1) # StackedWidget takes most space
 
-        self.main_content_splitter.addWidget(right_pane_widget)
-        self.main_content_splitter.setSizes([self.NAV_EXPANDED_WIDTH, 750]) # Initial sizes for nav and content
+        self.main_app_layout.addWidget(main_content_container, 1) # Main content takes remaining space
 
         # --- Global Buttons Frame ---
-        # MOVED EARLIER TO ENSURE BUTTONS EXIST BEFORE _on_navigation_changed IS CALLED
         global_buttons_frame = QFrame()
+        global_buttons_frame.setObjectName("GlobalButtonsFrame")
         global_buttons_layout = QHBoxLayout(global_buttons_frame)
-        global_buttons_layout.setContentsMargins(10, 5, 10, 5) # Thêm margins cho global buttons
+        global_buttons_layout.setContentsMargins(0, 5, 0, 0) # No horizontal margins, top margin
 
         global_buttons_layout.addStretch(1) # Stretch sẽ đẩy các nút sau nó sang phải
 
@@ -465,31 +368,32 @@ class PcInfoAppQt(QMainWindow):
 
         # --- Populate Navigation and Pages ---
         self.page_dashboard = QWidget()
-        self._create_dashboard_tab(self.page_dashboard) # New/Renamed method
+        create_dashboard_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Dashboard", self.page_dashboard, icon_path=resource_path(os.path.join("assets", "icons", "dashboard.png")))
 
         self.page_system_info = QWidget()
-        self._create_system_info_tab(self.page_system_info) # New method
+        create_system_info_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Hệ Thống", self.page_system_info, icon_path=resource_path(os.path.join("assets", "icons", "system.png")))
 
         self.page_security = QWidget()
-        self._create_security_tab(self.page_security) # New method
+        create_security_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Bảo Mật", self.page_security, icon_path=resource_path(os.path.join("assets", "icons", "security.png")))
 
         self.page_optimize = QWidget()
-        self._create_optimize_tab(self.page_optimize) # New method
+        create_optimize_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Tối Ưu", self.page_optimize, icon_path=resource_path(os.path.join("assets", "icons", "optimize.png")))
 
         self.page_network = QWidget() # Khởi tạo trang Mạng
-        self._create_network_tab(self.page_network) # Gọi hàm tạo nội dung cho tab Mạng
+        create_network_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Mạng", self.page_network, icon_path=resource_path(os.path.join("assets", "icons", "network.png")))
 
         self.page_update_center = QWidget() # Trang mới: Trung tâm Cập nhật
-        self._create_update_center_tab(self.page_update_center)
+        # create_update_center_tab_content(self) # Gọi hàm từ module mới khi bạn tạo file
+        self._create_update_center_tab(self.page_update_center) # Tạm thời giữ lại
         self._add_navigation_item("Cập nhật", self.page_update_center, icon_path=resource_path(os.path.join("assets", "icons", "update.png"))) # Cần icon update.png
 
         self.page_report_settings = QWidget() # Was page_about
-        self._create_report_settings_tab(self.page_report_settings) # Renamed method
+        create_report_settings_tab_content(self) # Gọi hàm từ module mới
         self._add_navigation_item("Báo Cáo & Cài đặt", self.page_report_settings, icon_path=resource_path(os.path.join("assets", "icons", "report.png")))
 
         self.nav_list_widget.currentRowChanged.connect(self._on_navigation_changed)
@@ -512,7 +416,7 @@ class PcInfoAppQt(QMainWindow):
         self.button_exit.clicked.connect(self.close)
         global_buttons_layout.addWidget(self.button_exit)
 
-        self.main_layout.addWidget(global_buttons_frame)
+        self.main_content_layout.addWidget(global_buttons_frame) # Add to main content layout
 
     def _add_navigation_item(self, name, page_widget, icon_path=None):
         item = QListWidgetItem(name)
@@ -532,186 +436,15 @@ class PcInfoAppQt(QMainWindow):
 
         self.nav_list_widget.addItem(item)
         self.pages_stack.addWidget(page_widget)
-        # Set icon size for the list widget items if desired
+        # Set icon size for the list widget items
         icon_dimension = int(self.nav_list_widget.fontMetrics().height() * 1.2) # Calculate dimension as integer
         self.nav_list_widget.setIconSize(QSize(icon_dimension, icon_dimension)) # Create QSize object
 
-    def _create_dashboard_tab(self, parent_tab_widget):
-        layout = QVBoxLayout(parent_tab_widget)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(15)
+    # def _create_dashboard_tab(self, parent_tab_widget): # Đã chuyển sang gui_dashboard_tab.py
+    #     pass # Nội dung đã được chuyển
 
-        # --- System Status Display ---
-        self.label_system_status = QLabel("Đang kiểm tra trạng thái hệ thống...")
-        self.label_system_status.setFont(self.h2_font) # Hoặc một font lớn hơn
-        self.label_system_status.setAlignment(Qt.AlignCenter)
-        self.label_system_status.setObjectName("SystemStatusLabel")
-        layout.addWidget(self.label_system_status)
-
-        # --- System Health Score ---
-        self.label_system_health_score = QLabel("Điểm Sức Khỏe Hệ Thống: Đang tính...")
-        self.label_system_health_score.setFont(self.h2_font)
-        self.label_system_health_score.setAlignment(Qt.AlignCenter)
-        self.label_system_health_score.setObjectName("SystemHealthScoreLabel")
-        layout.addWidget(self.label_system_health_score)
-
-
-        # --- Hardware Info Grid (CPU, RAM, SSD, GPU with ProgressBars) ---
-        hardware_grid_group = QGroupBox("Tổng Quan Hệ Thống")
-        hardware_grid_group.setFont(self.h2_font)
-        grid_layout = QGridLayout(hardware_grid_group)
-        grid_layout.setSpacing(10)
-
-        # Helper to create a hardware row
-        def create_hw_row(label_text):
-            hw_label = QLabel(label_text)
-            hw_label.setFont(self.body_font)
-            hw_progress = QProgressBar()
-            hw_progress.setFont(self.body_font)
-            hw_progress.setRange(0, 100)
-            hw_progress.setTextVisible(True)
-            hw_progress.setFixedHeight(22)
-            return hw_label, hw_progress
-
-        # CPU
-        self.label_cpu_name, self.progress_cpu = create_hw_row("CPU:")
-        grid_layout.addWidget(self.label_cpu_name, 0, 0)
-        grid_layout.addWidget(self.progress_cpu, 0, 1)
-
-        # RAM
-        self.label_ram_info, self.progress_ram = create_hw_row("RAM:")
-        grid_layout.addWidget(self.label_ram_info, 1, 0)
-        grid_layout.addWidget(self.progress_ram, 1, 1)
-
-        # SSD (Primary Disk)
-        self.label_ssd_info, self.progress_ssd = create_hw_row("SSD/HDD:")
-        grid_layout.addWidget(self.label_ssd_info, 2, 0)
-        grid_layout.addWidget(self.progress_ssd, 2, 1)
-
-        # GPU
-        self.label_gpu_info, self.progress_gpu = create_hw_row("GPU:")
-        grid_layout.addWidget(self.label_gpu_info, 3, 0)
-        grid_layout.addWidget(self.progress_gpu, 3, 1)
-
-
-        grid_layout.setColumnStretch(0, 1) # Label column
-        grid_layout.setColumnStretch(1, 3) # ProgressBar column (takes more space)
-
-        layout.addWidget(hardware_grid_group)
-        layout.addStretch(1) # Push content to top
-
-        # Initialize progress bars with placeholder values
-        self.progress_cpu.setValue(0)
-        self.label_cpu_name.setText("CPU: Đang tải...")
-        self.progress_ram.setValue(0)
-        self.label_ram_info.setText("RAM: Đang tải...")
-        self.progress_ssd.setValue(0)
-        self.label_ssd_info.setText("SSD/HDD: Đang tải...")
-        self.progress_gpu.setValue(0)
-        self.label_gpu_info.setText("GPU: Đang tải...")
-
-
-
-    def _create_system_info_tab(self, parent_tab_widget): # Was _create_home_tab
-        layout = QVBoxLayout(parent_tab_widget)
-        layout.setSpacing(15)
-        # --- User Info Frame (QGroupBox) ---
-        group_user_info = QGroupBox("Thông tin người dùng")
-        group_user_info.setFont(self.h2_font) # Sử dụng font tiêu đề H2
-        layout.addWidget(group_user_info)
-        user_info_grid_layout = QGridLayout(group_user_info) # Đổi tên để rõ ràng hơn
-        group_user_info.setObjectName("UserInfoGroup")
-
-        # Dòng 1: Tên và Phòng Ban
-        user_info_grid_layout.addWidget(QLabel("Tên:"), 0, 0)
-        self.entry_name_qt = QLineEdit()
-        self.entry_name_qt.setFont(self.body_font) # Sử dụng font mặc định
-        user_info_grid_layout.addWidget(self.entry_name_qt, 0, 1)
-
-        user_info_grid_layout.addWidget(QLabel("Phòng Ban:"), 0, 2)
-        self.entry_department_qt = QLineEdit()
-        self.entry_department_qt.setFont(self.body_font)
-        user_info_grid_layout.addWidget(self.entry_department_qt, 0, 3) # Phòng ban ở cột 3
-
-        # Dòng 1: Vị Trí Tầng (cột 0, 1) và ô nhập tầng tùy chỉnh (cột 2, 3 - sẽ được quản lý bởi on_floor_change_qt)
-        # Đảm bảo label "Nhập vị trí hiện tại" dùng font mặc định
-        user_info_grid_layout.addWidget(QLabel("Vị Trí:"), 1, 0) # Đổi tên label
-        self.combo_floor_qt = QComboBox()
-        self.combo_floor_qt.setFont(self.body_font)
-        self.combo_floor_qt.addItems(["Tầng G", "Lầu 1", "Lầu 2", "Khác"])
-        self.combo_floor_qt.currentIndexChanged.connect(self.on_floor_change_qt)
-        user_info_grid_layout.addWidget(self.combo_floor_qt, 1, 1) # ComboBox ở cột 1
-
-        self.entry_custom_floor_label_qt = QLabel("Vị trí khác:") # Đổi text 
-        self.entry_custom_floor_label_qt.setFont(self.h2_font) # Đổi sang font in đậm
-        self.entry_custom_floor_qt = QLineEdit()
-        self.entry_custom_floor_qt.setFont(self.body_font)
-        # Sẽ được thêm/xóa bởi on_floor_change_qt, không thêm vào layout cố định ở đây
-        self.on_floor_change_qt() # Initial state
-
-        # Dòng 2: Chức Vụ (cột 0,1) và Checkbox Ghi chú (cột 2)
-        user_info_grid_layout.addWidget(QLabel("Chức Vụ:"), 2, 0) # Chức Vụ ở dòng 2, cột 0
-        self.entry_position_qt = QLineEdit()
-        self.entry_position_qt.setFont(self.body_font)
-        user_info_grid_layout.addWidget(self.entry_position_qt, 2, 1) # Ô nhập Chức Vụ ở dòng 2, cột 1 (không kéo dài)
-
-        self.checkbox_show_notes = QCheckBox("Thêm ghi chú")
-        self.checkbox_show_notes.setFont(self.body_font)
-        self.checkbox_show_notes.toggled.connect(self.toggle_notes_visibility)
-        user_info_grid_layout.addWidget(self.checkbox_show_notes, 2, 2, 1, 2) # Checkbox ở dòng 2, cột 2, kéo dài 2 cột còn lại
-
-
-        # Dòng 3: Ghi chú (ẩn/hiện) - đã được dời xuống
-        self.label_notes_qt = QLabel("Ghi chú:")
-        self.label_notes_qt.setFont(self.body_font)
-        self.text_notes_qt = QTextEdit()
-        self.text_notes_qt.setFont(self.body_font)
-        self.text_notes_qt.setFixedHeight(60) # Giới hạn chiều cao
-        user_info_grid_layout.addWidget(self.label_notes_qt, 3, 0, Qt.AlignTop) # Label Ghi chú ở dòng 3, cột 0
-        user_info_grid_layout.addWidget(self.text_notes_qt, 3, 1, 1, 3) # Ô nhập Ghi chú ở dòng 3, cột 1, kéo dài 3 cột
-
-        self.toggle_notes_visibility(False) # Ẩn ghi chú ban đầu
-
-        user_info_grid_layout.setColumnStretch(1, 1) # Cho cột input của Tên và Tầng mở rộng
-        user_info_grid_layout.setColumnStretch(3, 1) # Cho cột input của Phòng Ban và Chức Vụ mở rộng
-
-        # --- System Info Display (Card Layout) ---
-        # ScrollArea for cards if they overflow
-        cards_scroll_area = QScrollArea()
-        cards_scroll_area.setWidgetResizable(True)
-        cards_scroll_area.setObjectName("CardsScrollArea")
-        
-        cards_container_widget = QWidget() # Widget to hold the grid of cards
-        self.home_cards_layout = QGridLayout(cards_container_widget) # Use QGridLayout for cards
-        self.home_cards_layout.setSpacing(15)
-
-        # Create placeholder cards (will be populated in _on_fetch_pc_info_completed)
-        self.card_general_info = self._create_info_card("Thông tin Chung")
-        self.card_os_info = self._create_info_card("Hệ Điều Hành")
-        self.card_cpu_info = self._create_info_card("CPU")
-        self.card_ram_info = self._create_info_card("RAM")
-        self.card_mainboard_info = self._create_info_card("Mainboard")
-        self.card_disks_info = self._create_info_card("Ổ Đĩa") # For multiple disks
-        self.card_gpus_info = self._create_info_card("Card Đồ Họa (GPU)") # For multiple GPUs
-        self.card_screens_info = self._create_info_card("Màn Hình") # For multiple screens
-        self.card_temperatures_info = self._create_info_card("Nhiệt Độ Hệ Thống") # Card mới cho nhiệt độ
-        
-
-
-        self.home_cards_layout.addWidget(self.card_general_info, 0, 0)
-        self.home_cards_layout.addWidget(self.card_os_info, 0, 1)
-        self.home_cards_layout.addWidget(self.card_cpu_info, 1, 0)
-        self.home_cards_layout.addWidget(self.card_ram_info, 1, 1)
-        self.home_cards_layout.addWidget(self.card_mainboard_info, 2, 0)
-        # self.home_cards_layout.addWidget(self.card_disk_health_info, 2, 1) # Removed
-        self.home_cards_layout.addWidget(self.card_disks_info, 2, 1)    # Physical disks moved to (2,1)
-        # self.home_cards_layout.addWidget(self.card_battery_info, 3, 1)  # Removed
-        self.home_cards_layout.addWidget(self.card_gpus_info, 3, 0, 1, 2) # Span 2 columns for GPUs, moved to row 3
-        self.home_cards_layout.addWidget(self.card_screens_info, 4, 0) 
-        self.home_cards_layout.addWidget(self.card_temperatures_info, 4, 1) # Thêm card nhiệt độ
-
-        cards_scroll_area.setWidget(cards_container_widget)
-        layout.addWidget(cards_scroll_area, 1) # Add scroll area to the main tab layout
+    # def _create_system_info_tab(self, parent_tab_widget): # Đã chuyển sang gui_system_info_tab.py
+    #     pass
 
     def _create_info_card(self, title):
         # This function is now used by _create_system_info_tab
@@ -1006,13 +739,9 @@ class PcInfoAppQt(QMainWindow):
         content_splitter_network.addWidget(results_container_widget) # Thêm vào QSplitter
         content_splitter_network.setSizes([320, 430]) # Tăng kích thước cột trái
 
-    def _create_utilities_tab(self, parent_tab_widget): # This tab is now for remaining diagnostics
-        # This is a placeholder, you'd move relevant buttons from old _create_utilities_tab here
-        # For example: Disk Usage, Battery Report, Windows Activation, Event Logs, Software Versions, Temps, Processes, Disk Speed
-        # This function is not directly used by the new nav structure but can be a template
-        # if you decide to have a "General Utilities" or "Diagnostics" tab.
-        # For now, these functions might be integrated into "💻 Hệ Thống" or other specific tabs.
-        pass
+    # def _create_utilities_tab(self, parent_tab_widget): # Đã không còn sử dụng, có thể xóa
+    #     pass
+
     def _create_update_center_tab(self, parent_tab_widget):
         tab_main_layout = QVBoxLayout(parent_tab_widget)
         tab_main_layout.setSpacing(15)
@@ -1073,102 +802,8 @@ class PcInfoAppQt(QMainWindow):
         button.setStyleSheet("QPushButton { white-space: normal; text-align: left; padding-left: 10px; padding-right: 10px; }") # CSS để text wrap và căn trái
         layout.addWidget(button)
         return button
-
-    def _create_fixes_tab(self, parent_tab_widget): # This tab is now split into Optimize and others
-        # This function is not directly used by the new nav structure.
-        tab_main_layout_fixes = QVBoxLayout(parent_tab_widget)
-
-        content_splitter_fixes = QSplitter(Qt.Horizontal) # Sử dụng QSplitter
-        tab_main_layout_fixes.addWidget(content_splitter_fixes)
-
-        # --- Left Column: Search Bar and Action Buttons ---
-        left_column_widget_fixes = QWidget()
-        left_column_layout_fixes = QVBoxLayout(left_column_widget_fixes)
-        left_column_layout_fixes.setContentsMargins(0,0,0,0)
-        left_column_layout_fixes.setSpacing(5)
-        scroll_area_actions = QScrollArea()
-        scroll_area_actions.setWidgetResizable(True)
-        actions_widget_container = QWidget()
-        self.fixes_actions_layout = QVBoxLayout(actions_widget_container) # Store as instance member
-        self.fixes_actions_layout.setSpacing(10) # Tăng khoảng cách giữa các GroupBox
-        self.fixes_actions_layout.setAlignment(Qt.AlignTop)
-
-        # Group 1: Tối ưu & Dọn dẹp Hệ thống
-        group_optimize_cleanup = QGroupBox("Tối ưu & Dọn dẹp Hệ thống")
-        group_optimize_cleanup.setFont(self.h2_font)
-        optimize_cleanup_layout = QVBoxLayout(group_optimize_cleanup)
-        self._add_utility_button(optimize_cleanup_layout, "Xóa File Tạm & Dọn Dẹp", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, clear_temporary_files, "fix_clear_temp", needs_wmi=False))
-        self._add_utility_button(optimize_cleanup_layout, "Mở Resource Monitor", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, open_resource_monitor, "fix_resmon", needs_wmi=False))
-        self._add_utility_button(optimize_cleanup_layout, "Quản Lý Khởi Động Cùng Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, get_startup_programs, "fix_startup_programs", needs_wmi=True, result_type="table"))
-        self.fixes_actions_layout.addWidget(group_optimize_cleanup)
-
-        # Group 2: Sửa lỗi & Cập nhật Hệ thống
-        group_fix_update = QGroupBox("Sửa lỗi & Cập nhật Hệ thống")
-        group_fix_update.setFont(self.h2_font)
-        fix_update_layout = QVBoxLayout(group_fix_update)
-        self._add_utility_button(fix_update_layout, "Reset Kết Nối Internet", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, reset_internet_connection, "fix_reset_net", needs_wmi=False))
-        self._add_utility_button(fix_update_layout, "Chạy SFC Scan", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, run_sfc_scan, "fix_sfc_scan", needs_wmi=False))
-        self._add_utility_button(fix_update_layout, "Tạo Điểm Khôi Phục Hệ Thống", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, create_system_restore_point, "fix_create_restore_point", needs_wmi=False))
-        self._add_utility_button(fix_update_layout, "Cập Nhật Phần Mềm (Winget)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, update_all_winget_packages, "fix_winget_update", needs_wmi=False))
-        self.fixes_actions_layout.addWidget(group_fix_update)
-
-        # Group 3: Tối ưu Nâng Cao
-        group_advanced_optimization = QGroupBox("Tối ưu Nâng Cao")
-        group_advanced_optimization.setFont(self.h2_font)
-        advanced_opt_layout = QVBoxLayout(group_advanced_optimization)        
-        self._add_utility_button(advanced_opt_layout, "Tối ưu Dịch Vụ Windows", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, optimize_windows_services, "fix_optimize_services", needs_wmi=False))
-        self._add_utility_button(advanced_opt_layout, "Dọn Dẹp Registry (Có Sao Lưu)", lambda btn: self._run_task_in_thread_qt(btn, self.stacked_widget_results_fixes, clean_registry_with_backup, "fix_clean_registry", needs_wmi=False))
-        self.fixes_actions_layout.addWidget(group_advanced_optimization)
-
-        self.fixes_actions_layout.addStretch(1)
-        scroll_area_actions.setWidget(actions_widget_container)
-        left_column_layout_fixes.addWidget(scroll_area_actions) # Add scroll area below search bar
-        # content_layout_fixes.addWidget(left_column_widget_fixes, 2) # Bỏ QHBoxLayout
-        content_splitter_fixes.addWidget(left_column_widget_fixes) # Thêm vào QSplitter
-
-
-        # Right Column: Fixes Results Display
-        results_container_widget = QWidget()
-        self.fixes_results_main_layout = QVBoxLayout(results_container_widget) # Lưu layout này
-        self.fixes_results_main_layout.setContentsMargins(0,0,0,0)
-
-        self.stacked_widget_results_fixes = QStackedWidget()
-
-        # Page 0 for Fixes Tab: QTextEdit
-        results_group = QGroupBox("Kết quả Tác vụ Sửa lỗi")
-        results_group.setFont(self.h2_font)
-        results_layout_inner = QVBoxLayout(results_group)
-        self.text_fixes_results_qt = QTextEdit()
-        self.text_fixes_results_qt.setReadOnly(True)
-        self.text_fixes_results_qt.setFont(self.monospace_font)
-        self.text_fixes_results_qt.setWordWrapMode(QTextOption.NoWrap)
-        self.text_fixes_results_qt.setObjectName("FixesResultTextEdit")
-        results_layout_inner.addWidget(self.text_fixes_results_qt)
-        self._update_display_widget(self.text_fixes_results_qt, html.escape("Chọn một tác vụ để thực hiện."))
-        self.stacked_widget_results_fixes.addWidget(results_group)
-
-        # Page 1 for Fixes Tab: QTableWidget
-        self.table_fixes_results_qt = QTableWidget()
-        self.table_fixes_results_qt.setFont(self.body_font)
-        self.table_fixes_results_qt.setAlternatingRowColors(True)
-        self.table_fixes_results_qt.setSortingEnabled(True)
-        self.table_fixes_results_qt.horizontalHeader().setStretchLastSection(True)
-        self.table_fixes_results_qt.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table_fixes_results_qt.setObjectName("ResultTableWidget")
-        self.stacked_widget_results_fixes.addWidget(self.table_fixes_results_qt)
-
-        self.fixes_results_main_layout.addWidget(self.stacked_widget_results_fixes, 1)
-        
-        # # Frame cho nút lưu kết quả ở tab Fixes (ĐÃ DI CHUYỂN RA GLOBAL)
-        # fixes_buttons_frame = QFrame()
-        # fixes_buttons_layout_inner = QHBoxLayout(fixes_buttons_frame) # Layout nội bộ cho các nút
-        # fixes_buttons_layout_inner.addStretch(1) # Đẩy nút Lưu sang phải
-        # self.button_save_fix_result_qt = QPushButton("Lưu Kết Quả Sửa Lỗi")
-        # self._style_save_button(self.button_save_fix_result_qt, lambda: self.save_tab_result_qt(self.stacked_widget_results_fixes, "KetQua_SuaLoi"))
-        # fixes_buttons_layout_inner.addWidget(self.button_save_fix_result_qt)
-        # self.fixes_results_main_layout.addWidget(fixes_buttons_frame)
-
-        content_layout_fixes.addWidget(results_container_widget, 3) # Điều chỉnh tỷ lệ cho cột phải
+    # def _create_fixes_tab(self, parent_tab_widget): # Đã không còn sử dụng hoặc chức năng đã được tích hợp vào tab Tối Ưu, có thể xóa
+    #     pass
 
     def _perform_global_search(self):
         """Thực hiện tìm kiếm/lọc dựa trên tab hiện tại và nội dung của global_search_input."""
@@ -1203,56 +838,9 @@ class PcInfoAppQt(QMainWindow):
             #     self._perform_text_search(text_edit_system, search_term)
 
         # Add other pages if they need search functionality
+    # def _create_report_settings_tab(self, parent_tab_widget): # Đã chuyển sang gui_report_settings_tab.py
+    #     pass
 
-
-    def _create_report_settings_tab(self, parent_tab_widget): # Was _create_about_tab
-        layout = QVBoxLayout(parent_tab_widget)
-        layout.setContentsMargins(20, 20, 20, 20) # Thêm padding cho dễ nhìn
-        layout.setSpacing(15)
-        layout.setAlignment(Qt.AlignTop)
-        # Styling for button_save_active_tab_result will be handled in _apply_styles
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_content_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content_widget)
-        scroll_layout.setAlignment(Qt.AlignTop)
-
-        # --- Nút Xuất Báo Cáo PC ---
-        self.button_export_pc_report_tab = QPushButton("Xuất Báo Cáo Thông Tin PC")
-        self.button_export_pc_report_tab.setFont(self.body_font)
-        self.button_export_pc_report_tab.setCursor(Qt.PointingHandCursor)
-        self.button_export_pc_report_tab.clicked.connect(self.on_export_info_qt)
-        self.button_export_pc_report_tab.setObjectName("ExportReportButton") # For styling if needed
-        scroll_layout.addWidget(self.button_export_pc_report_tab)
-
-        # --- Tiêu đề ứng dụng ---
-        title_label = QLabel("Công Cụ Hỗ Trợ PC")
-        title_label.setFont(self.h1_font) # Use H1 font
-
-        title_label.setTextInteractionFlags(Qt.TextSelectableByMouse) # Cho phép copy
-        title_label.setAlignment(Qt.AlignCenter)
-        scroll_layout.addWidget(title_label)
-
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Phiên bản:", "V.2.1 (Concept UI)"))
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Người sáng lập:", "HPC"))
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Liên hệ:", "support@example.com"))
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Giấy phép:", "Phần mềm nội bộ"))
-
-        readme_text = """**TỔNG QUAN SẢN PHẨM**
-
-**Tên sản phẩm:** Thông Tin Cấu Hình PC v2.0
-**Nhà phát triển:** HPC
-**Thị trường mục tiêu:** Người dùng cuối Việt Nam, Hỗ trợ CNTT, Doanh nghiệp nhỏ
-**Danh mục sản phẩm:** Công cụ Tiện ích & Tối ưu Hệ thống
-
-**Các chức năng chính:**
-- Thu thập thông tin chi tiết về phần cứng, phần mềm.
-- Cung cấp các tiện ích quét virus, kiểm tra ổ đĩa, pin, kích hoạt Windows.
-- Hỗ trợ các tác vụ sửa lỗi hệ thống như dọn dẹp file tạm, reset kết nối mạng, chạy SFC scan."""
-        scroll_layout.addWidget(self._create_info_section_qt(scroll_content_widget, "Mô tả & Chức năng:", readme_text, is_html=True)) # Đổi tiêu đề section
-        scroll_area.setWidget(scroll_content_widget)
-        layout.addWidget(scroll_area)
     def _create_results_display_area(self, group_title, text_edit_object_name, table_widget_object_name):
         """Helper to create a QStackedWidget with a QTextEdit and QTableWidget for results."""
         stacked_widget = QStackedWidget()
@@ -1305,20 +893,36 @@ class PcInfoAppQt(QMainWindow):
     def _apply_styles(self):
         # Sử dụng các hằng số màu và font đã định nghĩa
         self.setStyleSheet(f"""
-            QMainWindow {{
+            QMainWindow, QWidget#CentralWidget {{
                 background-color: {WINDOW_BG};
                 font-family: "{DEFAULT_FONT_FAMILY}"; /* Default font for the whole window */
                 font-size: {BODY_FONT_SIZE}pt; /* Base font size for the application */
-            }}
-            QFrame#TopHeaderBar {{
-                background-color: {FRAME_BG}; /* Or a specific header color */
-                border-bottom: none; /* Bỏ viền dưới */
-                padding: 0px; /* Remove padding if QHBoxLayout handles it */
             }}
             QWidget {{ /* Apply default font to all child widgets */
                 font-family: "{DEFAULT_FONT_FAMILY}";
                 font-size: {BODY_FONT_SIZE}pt;
                 color: {TEXT_COLOR_PRIMARY}; 
+            }}
+            QWidget#Sidebar {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {SIDEBAR_BG_START}, stop:1 {SIDEBAR_BG_END});
+            }}
+            QLabel#SidebarAppTitle {{
+                color: white;
+                font-size: {H1_FONT_SIZE + 2}pt; /* 24px in HTML */
+                font-weight: bold;
+                margin-bottom: 2px;
+            }}
+            QLabel#SidebarAppSubtitle {{
+                color: {SIDEBAR_LOGO_SUBTITLE_COLOR};
+                font-size: {BODY_FONT_SIZE -1}pt; /* 14px in HTML */
+            }}
+            QWidget#MainContentContainer {{
+                background-color: {MAIN_CONTENT_BG};
+            }}
+            QWidget#PageHeader {{
+                background-color: {HEADER_BG};
+                border-radius: 16px;
+                /* Add box-shadow effect here if possible, or use QGraphicsDropShadowEffect */
             }}
             QGroupBox {{
                 background-color: {GROUPBOX_BG}; /* Background for groupbox */
@@ -1341,6 +945,18 @@ class PcInfoAppQt(QMainWindow):
             QLabel {{
                 padding: 3px;
                 background-color: transparent; /* Ensure labels don't have own background unless intended */
+            }}
+            QLabel#PageTitleLabel {{
+                font-size: {H1_FONT_SIZE + 6}pt; /* 28px in HTML */
+                font-weight: bold;
+                color: {HEADER_TEXT_COLOR};
+            }}
+            QLabel#HealthScoreLabel {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {SECONDARY_COLOR}, stop:1 #059669); /* Green gradient */
+                color: white;
+                padding: 8px 15px; /* 12px 20px in HTML */
+                border-radius: 15px; /* 25px in HTML, adjust for Qt */
+                font-weight: bold;
             }}
             QPushButton {{
                 /* Default button style - will be overridden by specific objectNames or classes */
@@ -1424,24 +1040,48 @@ class PcInfoAppQt(QMainWindow):
             QListWidget#NavList {{
                 background-color: {WINDOW_BG}; /* Match window background or a slightly different shade */
                 border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho NavList */
-                padding: 5px;
+                padding: 0px 10px; /* Horizontal padding for items within list */
                 outline: 0; /* Remove focus outline if not desired */
+                border: none; /* No border for the list widget itself, sidebar handles bg */
+                background-color: transparent;
             }}
             QListWidget#NavList::item {{
-                padding: 10px 8px; /* Padding for each item */
-                border-radius: 4px; /* Rounded corners for items */
+                padding: 12px 15px; /* 15px 20px in HTML */
+                border-radius: 10px; /* 12px in HTML */
+                color: {SIDEBAR_TEXT_COLOR};
+                font-weight: 500; /* medium */
+                margin: 5px 0; /* Vertical margin between items */
+
             }}
             QListWidget#NavList::item:selected {{
-                background-color: {PRIMARY_COLOR}; /* Primary color for selected item */
-                color: white; /* White text for selected item */
+                background-color: {SIDEBAR_TEXT_ACTIVE_BG};
+                color: {SIDEBAR_TEXT_ACTIVE_COLOR};
+                /* transform: translateX(5px); -> Not directly possible in QSS, might need custom delegate or item widget */
+            }}
+            QListWidget#NavList::item:hover {{
+                background-color: {SIDEBAR_TEXT_HOVER_BG};
+                color: {SIDEBAR_TEXT_ACTIVE_COLOR};
+            }}
+            QListWidget#NavList::item:selected:hover {{
+                background-color: {SIDEBAR_TEXT_ACTIVE_BG}; /* Keep active style on hover */
+            }}
+            /* Icon styling for NavList items */
+            QListWidget#NavList::item QLabel {{ /* If icons are QLabels inside items */
+                /* color: {SIDEBAR_TEXT_COLOR}; */ /* Or specific icon color */
+            }}
+            QListWidget#NavList::item:selected QLabel {{
+                /* color: {SIDEBAR_TEXT_ACTIVE_COLOR}; */
+
             }}
             QTabBar::tab:!selected:hover {{
                 background: {ACCENT_COLOR_HOVER}; /* Use accent color for hover on inactive tabs */
                 color: white;
             }}
             QScrollArea {{
-                border: none;
                 background-color: transparent; /* Scroll area background should be transparent */
+            }}
+            QScrollArea#DashboardScrollArea {{
+                 border: none;
             }}
             QSplitter::handle {{
                 background-color: {BORDER_COLOR_LIGHT}; /* Make it a line */
@@ -1471,6 +1111,47 @@ class PcInfoAppQt(QMainWindow):
             }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
+            }}
+            /* Stat Card Styling */
+            QWidget[objectName$="Card"] {{ /* Targets cpuCard, ramCard, etc. */
+                background-color: {STAT_CARD_BG};
+                border-radius: 16px; /* 20px in HTML */
+                padding: 20px; /* 30px in HTML */
+                /* Add top border with gradient or QGraphicsDropShadowEffect for shadow */
+                /* border-top: 4px solid {PRIMARY_COLOR}; Fallback, gradient is harder */
+            }}
+            QWidget[objectName="cpuCard"] {{ border-top: 4px solid {PRIMARY_COLOR}; }}
+            QWidget[objectName="ramCard"] {{ border-top: 4px solid {SECONDARY_COLOR}; }}
+            QWidget[objectName="ssdCard"] {{ border-top: 4px solid {ACCENT_COLOR}; }}
+            QWidget[objectName="gpuCard"] {{ border-top: 4px solid {PURPLE_COLOR}; }}
+
+            QLabel[objectName$="Title"] {{ /* cpuTitle, ramTitle */
+                font-size: {BODY_FONT_SIZE}pt; /* 16px in HTML */
+                font-weight: 600;
+                color: {STAT_CARD_TITLE_COLOR};
+            }}
+            QLabel[objectName$="Icon"] {{
+                font-size: {H1_FONT_SIZE}pt; /* 20px in HTML */
+                color: white;
+                border-radius: 10px; /* 12px in HTML */
+                padding: 5px; /* Add some padding inside the icon label */
+                /* Specific backgrounds per icon */
+            }}
+            QLabel#cpuIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3b82f6, stop:1 #1d4ed8); }}
+            QLabel#ramIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #10b981, stop:1 #059669); }}
+            QLabel#ssdIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #d97706); }}
+            QLabel#gpuIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8b5cf6, stop:1 #7c3aed); }}
+
+            QLabel[objectName$="Value"] {{ /* cpuValue, ramValue */
+                font-size: {H1_FONT_SIZE + 10}pt; /* 32px in HTML */
+                font-weight: bold; /* 700 */
+                color: {STAT_CARD_VALUE_COLOR};
+                margin-bottom: 5px; /* 10px in HTML */
+            }}
+            QLabel[objectName$="Details"] {{ /* cpuDetails, ramDetails */
+                font-size: {BODY_FONT_SIZE -1}pt; /* 14px in HTML */
+                color: {STAT_CARD_DETAILS_COLOR};
+                line-height: 1.5; /* Not directly settable, QLabel wordwrap handles it */
             }}
             /* Styles for result display QTextEdit and QTableWidget widgets */
             QTextEdit#ResultTextEdit, QTextEdit#SecurityResultTextEdit, QTextEdit#OptimizeResultTextEdit, QTextEdit#NetworkResultTextEdit, QTextEdit#FixesResultTextEdit, QTextEdit#text_update_results_qt {{
@@ -1565,12 +1246,13 @@ class PcInfoAppQt(QMainWindow):
             QDialog#SetDnsDialog QPushButton[text="OK"]:pressed, QDialog#SetDnsDialog QPushButton[text="&OK"]:pressed {{
                 font-weight: bold; 
             }}
-            QPushButton#NavToggleHeaderButton {{
+            QPushButton#NavToggleSidebarButton {{
                 background-color: transparent;
                 border: none; /* Nút toggle nav không có viền */
                 padding: 5px; /* Adjust as needed */
+            color: {SIDEBAR_TEXT_COLOR}; /* Icon/text color */
             }}
-            QPushButton#NavToggleHeaderButton:hover {{
+            QPushButton#NavToggleSidebarButton:hover {{
                 background-color: {BUTTON_SECONDARY_HOVER}; /* Light hover effect */
             }}
             QLabel#AppTitleLabel {{
@@ -1597,6 +1279,33 @@ class PcInfoAppQt(QMainWindow):
             }}
             QPushButton#GamingModeButton:hover {{ background-color: {BUTTON_SECONDARY_HOVER}; }}
             QPushButton#GamingModeButton:checked:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
+            /* Quick Actions Styling */
+            QWidget#QuickActionsWidget {{
+                background-color: {STAT_CARD_BG};
+                border-radius: 16px; /* 20px in HTML */
+                padding: 25px; /* 30px in HTML */
+            }}
+            QLabel#QuickActionsTitle {{
+                font-size: {H1_FONT_SIZE + 2}pt; /* 22px in HTML */
+                font-weight: bold; /* 700 */
+                color: {HEADER_TEXT_COLOR};
+                margin-bottom: 15px; /* 20px in HTML */
+            }}
+            QPushButton#ActionBtn {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {GRADIENT_BG_START}, stop:1 {GRADIENT_BG_END});
+                color: white;
+                border: none;
+                padding: 15px 20px; /* 18px 24px in HTML */
+                border-radius: 10px; /* 12px in HTML */
+                font-size: {BODY_FONT_SIZE + 1}pt; /* 16px in HTML */
+                font-weight: 600;
+            }}            
+            QPushButton#ActionBtn:hover {{
+                /* transform: translateY(-2px); -> Not directly in QSS */
+                /* box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4); -> Use QGraphicsDropShadowEffect */
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #764ba2, stop:1 #667eea); /* Slightly different gradient on hover */
+            }}
+
        
         """) # type: ignore
         # Specific button styles (override general QPushButton style)
@@ -1662,13 +1371,15 @@ class PcInfoAppQt(QMainWindow):
                 border-radius: 8px; /* Giữ lại bo góc cho nền */
                 margin-top: 15px; /* Điều chỉnh margin top cho card */
                 padding: 5px 5px 8px 5px;    /* Điều chỉnh padding (top, right, bottom, left) */
+                border-top: none; /* Remove generic top border for InfoCard if specific ones are not used */
+            
             }}
             QGroupBox#ResultsDisplayGroup {{ /* Đã có từ yêu cầu trước, đảm bảo nó không bị ảnh hưởng */
                 border: 5px;
                 margin-top: 5px;
                 padding: 0px;
             }}
-            QProgressBar {{
+            QProgressBar, QProgressBar[objectName$="Progress"] {{
                 border: 1px solid {BORDER_COLOR_DARK}; /* Viền nhẹ cho ProgressBar */
                 border-radius: 5px;
                 text-align: center; /* Center the percentage text */
@@ -1679,6 +1390,10 @@ class PcInfoAppQt(QMainWindow):
                 border-radius: 4px; /* Slightly smaller radius for the chunk */
                 /* width: 10px; */ /* Optional: if you want a segmented look */
             }}
+            QProgressBar#cpuProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b82f6, stop:1 #1d4ed8); }}
+            QProgressBar#ramProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #059669); }}
+            QProgressBar#ssdProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f59e0b, stop:1 #d97706); }}
+            QProgressBar#gpuProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #8b5cf6, stop:1 #7c3aed); }}
         """)
         self._update_status_bar("Ứng dụng sẵn sàng.", "info") # Set initial status
 
@@ -1800,16 +1515,20 @@ class PcInfoAppQt(QMainWindow):
         # Update placeholder text in cards
         current_page = self.pages_stack.currentWidget()
         if current_page == self.page_dashboard:
-            self.label_cpu_name.setText("CPU: Đang tải...")
+            self.label_cpu_value.setText("...")
             self.progress_cpu.setValue(0)
-            self.label_ram_info.setText("RAM: Đang tải...")
+            self.progress_cpu.setFormat("...")
+            self.label_ram_value.setText("...")
             self.progress_ram.setValue(0)
-            self.label_ssd_info.setText("SSD/HDD: Đang tải...")
+            self.progress_ram.setFormat("...")
+            self.label_ssd_value.setText("...")
             self.progress_ssd.setValue(0)
-            self.label_gpu_info.setText("GPU: Đang tải...")
+            self.progress_ssd.setFormat("...")
+            self.label_gpu_value.setText("...")
             self.progress_gpu.setValue(0)
-            self.label_system_status.setText("Đang kiểm tra trạng thái...")
-            self.label_system_health_score.setText("Điểm Sức Khỏe Hệ Thống: Đang tính...")
+            self.progress_gpu.setFormat("...")
+            self.health_score_label.setText("🎯 Điểm Sức Khỏe: Đang tính...")
+
         elif current_page == self.page_system_info:
              # Update placeholder text in cards on System Info tab
             card_widgets = [
@@ -1870,82 +1589,136 @@ class PcInfoAppQt(QMainWindow):
 
 
             # --- Update Dashboard Tab ---
-            if hasattr(self, 'label_cpu_name'): # Check if dashboard elements exist
+            if hasattr(self, 'label_cpu_value'): # Check if dashboard elements exist
                 # CPU
-                cpu_model = pc_data.get("CPU", {}).get("Kiểu máy", NOT_AVAILABLE)
-                self.label_cpu_name.setText(f"CPU: {cpu_model}")
-                # Actual CPU usage % is hard to get simply, using placeholder
-                self.progress_cpu.setValue(pc_data.get("CPU", {}).get("Tải CPU (%)", 50)) # Placeholder if not available
+                cpu_info = pc_data.get("CPU", {})
+                cpu_model = cpu_info.get("Kiểu máy", NOT_AVAILABLE)
+                cpu_cores = cpu_info.get("Số lõi", "N/A")
+                cpu_threads = cpu_info.get("Số luồng", "N/A")
+                cpu_speed = cpu_info.get("Tốc độ cơ bản", NOT_AVAILABLE)
+                cpu_usage_percent = cpu_info.get("Tải CPU (%)", 0)
+
+                if self._is_value_unavailable(cpu_model) and cpu_usage_percent == 0:
+                    self.label_cpu_value.setText("N/A")
+                    self.progress_cpu.setValue(0)
+                    self.progress_cpu.setFormat("N/A")
+                    self.label_cpu_details.setText(f"N/A<br>N/A Cores, N/A Threads<br>Tốc độ: N/A")
+                elif "Lỗi" in str(cpu_model) or cpu_usage_percent < 0: # Giả sử giá trị âm là lỗi
+                    self.label_cpu_value.setText("Lỗi")
+                    self.progress_cpu.setValue(0)
+                    self.progress_cpu.setFormat("Lỗi")
+                    self.label_cpu_details.setText(f"Lỗi lấy thông tin CPU")
+                else:
+                    self.label_cpu_value.setText(f"{cpu_usage_percent}%")
+                    self.progress_cpu.setValue(cpu_usage_percent)
+                    self.progress_cpu.setFormat("%p%")
+                    self.label_cpu_details.setText(f"{html.escape(str(cpu_model))}<br>{html.escape(str(cpu_cores))} Cores, {html.escape(str(cpu_threads))} Threads<br>Tốc độ: {html.escape(str(cpu_speed))}")
 
                 # RAM
-                ram_total_str = pc_data.get("Bộ nhớ RAM", "0 GB")
-                ram_usage_percent = pc_data.get("RAM", {}).get("Phần trăm đã sử dụng", 60) # Placeholder
-                self.label_ram_info.setText(f"RAM: {ram_total_str} ({ram_usage_percent}%)")
-                self.progress_ram.setValue(ram_usage_percent)
+                ram_info = pc_data.get("RAM", {})
+                ram_total_str = pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE) # Lấy từ cấp PC cho tổng RAM
+                ram_usage_percent = ram_info.get("Phần trăm đã sử dụng", 0)
+                ram_used_gb = ram_info.get("Đã sử dụng (GB)", "N/A")
+                ram_free_gb = ram_info.get("Còn trống (GB)", "N/A")
+
+                if self._is_value_unavailable(ram_total_str) and ram_usage_percent == 0:
+                    self.label_ram_value.setText("N/A")
+                    self.progress_ram.setValue(0)
+                    self.progress_ram.setFormat("N/A")
+                    self.label_ram_details.setText(f"Tổng RAM: N/A<br>Đã sử dụng: N/A GB<br>Còn trống: N/A GB")
+                elif "Lỗi" in str(ram_total_str) or ram_usage_percent < 0:
+                    self.label_ram_value.setText("Lỗi")
+                    self.progress_ram.setValue(0)
+                    self.progress_ram.setFormat("Lỗi")
+                    self.label_ram_details.setText(f"Lỗi lấy thông tin RAM")
+                else:
+                    self.label_ram_value.setText(f"{ram_usage_percent}%")
+                    self.progress_ram.setValue(ram_usage_percent)
+                    self.progress_ram.setFormat("%p%")
+                    self.label_ram_details.setText(f"Tổng RAM: {html.escape(str(ram_total_str))}<br>Đã sử dụng: {html.escape(str(ram_used_gb))} GB<br>Còn trống: {html.escape(str(ram_free_gb))} GB")
 
                 # SSD/Disk (Example: first physical disk, or C: partition if available)
-                # This part needs more robust logic to find C: or primary OS disk and its usage
                 disks_info_list = pc_data.get("Ổ đĩa", [])
                 disk_partitions_usage = self.pc_info_dict.get("SystemCheckUtilities", {}).get("DiskPartitionsUsage", [])
-                
-                os_disk_info_str = "SSD/HDD: " + NOT_AVAILABLE
+                os_disk_model = NOT_AVAILABLE
+                os_disk_capacity_gb = "N/A"
+                os_disk_used_gb = "N/A"
                 os_disk_usage_percent = 0
+                ssd_error = False
 
                 if disk_partitions_usage and isinstance(disk_partitions_usage, list):
                     for part in disk_partitions_usage:
                         if part.get("Tên ổ đĩa") == "C:":
-                            os_disk_info_str = f"Ổ C: {part.get('Tổng dung lượng (GB)', '')}GB ({part.get('Loại File System', '')})"
+                            os_disk_capacity_gb = part.get('Tổng dung lượng (GB)', 'N/A')
+                            os_disk_used_gb = part.get('Đã dùng (GB)', 'N/A')
                             try:
-                                used_gb = float(part.get('Đã dùng (GB)', 0))
-                                total_gb = float(part.get('Tổng dung lượng (GB)', 1))
-                                if total_gb > 0:
-                                    os_disk_usage_percent = int((used_gb / total_gb) * 100)
+                                if not self._is_value_unavailable(os_disk_used_gb) and not self._is_value_unavailable(os_disk_capacity_gb):
+                                    used_gb_float = float(os_disk_used_gb)
+                                    total_gb_float = float(os_disk_capacity_gb)
+                                    if total_gb_float > 0:
+                                        os_disk_usage_percent = int((used_gb_float / total_gb_float) * 100)
+                                else:
+                                    os_disk_usage_percent = 0 # Mark as N/A if components are missing
                             except ValueError:
-                                pass
+                                ssd_error = True
                             break 
-                elif disks_info_list: # Fallback to first physical disk if C: not found
+                if disks_info_list and isinstance(disks_info_list, list) and isinstance(disks_info_list[0], dict):
                     first_disk = disks_info_list[0]
-                    os_disk_info_str = f"SSD/HDD: {first_disk.get('Kiểu máy', NOT_AVAILABLE)} ({first_disk.get('Dung lượng (GB)', 'N/A')}GB)"
-                    os_disk_usage_percent = 70 # Placeholder
-                
-                self.label_ssd_info.setText(os_disk_info_str)
-                self.progress_ssd.setValue(os_disk_usage_percent)
+                    os_disk_model = first_disk.get('Kiểu máy', NOT_AVAILABLE)
+                    if self._is_value_unavailable(os_disk_capacity_gb): # If C: partition didn't provide total, use disk total
+                        os_disk_capacity_gb = first_disk.get('Dung lượng (GB)', 'N/A')
+
+                if ssd_error or "Lỗi" in str(os_disk_model):
+                    self.label_ssd_value.setText("Lỗi")
+                    self.progress_ssd.setValue(0)
+                    self.progress_ssd.setFormat("Lỗi")
+                    self.label_ssd_details.setText(f"Lỗi lấy thông tin SSD")
+                elif self._is_value_unavailable(os_disk_model) and os_disk_usage_percent == 0 and self._is_value_unavailable(os_disk_capacity_gb):
+                    self.label_ssd_value.setText("N/A")
+                    self.progress_ssd.setValue(0)
+                    self.progress_ssd.setFormat("N/A")
+                    self.label_ssd_details.setText(f"N/A<br>Dung lượng: N/A GB<br>Đã sử dụng: N/A GB")
+                else:
+                    self.label_ssd_value.setText(f"{os_disk_usage_percent}%")
+                    self.progress_ssd.setValue(os_disk_usage_percent)
+                    self.progress_ssd.setFormat("%p%")
+                    self.label_ssd_details.setText(f"{html.escape(str(os_disk_model))}<br>Dung lượng: {html.escape(str(os_disk_capacity_gb))} GB<br>Đã sử dụng: {html.escape(str(os_disk_used_gb))} GB")
 
                 # GPU
                 gpus = pc_data.get("Card đồ họa (GPU)", [])
                 if gpus and isinstance(gpus, list) and isinstance(gpus[0], dict):
                     first_gpu = gpus[0]
                     gpu_name = first_gpu.get("Tên", NOT_AVAILABLE)
-                    self.label_gpu_info.setText(f"GPU: {gpu_name}")
-                    self.progress_gpu.setValue(first_gpu.get("Tải GPU (%)", 30)) # Placeholder
-                else:
-                    self.label_gpu_info.setText(f"GPU: {NOT_AVAILABLE}")
+                    gpu_vram = first_gpu.get("Tổng bộ nhớ (MB)", NOT_AVAILABLE)
+                    gpu_driver = first_gpu.get("Phiên bản Driver", NOT_AVAILABLE)
+                    gpu_load = first_gpu.get("Tải GPU (%)", 0)
+
+                    if "Lỗi" in str(gpu_name) or gpu_load < 0:
+                        self.label_gpu_value.setText("Lỗi")
+                        self.progress_gpu.setValue(0)
+                        self.progress_gpu.setFormat("Lỗi")
+                        self.label_gpu_details.setText(f"Lỗi lấy thông tin GPU")
+                    else:
+                        self.label_gpu_value.setText(f"{gpu_load}%")
+                        self.progress_gpu.setValue(gpu_load)
+                        self.progress_gpu.setFormat("%p%")
+                        self.label_gpu_details.setText(f"{html.escape(str(gpu_name))}<br>VRAM: {html.escape(str(gpu_vram))} MB<br>Driver: {html.escape(str(gpu_driver))}")
+                else: # No GPU found or error in GPU list structure
+                    self.label_gpu_value.setText(f"{gpu_load}%")
+                    self.label_gpu_value.setText("N/A")
                     self.progress_gpu.setValue(0)
-                    # Update System Health Score on Dashboard
+                    self.progress_gpu.setFormat("N/A")
+                    self.label_gpu_details.setText(f"{NOT_AVAILABLE}<br>VRAM: N/A<br>Driver: N/A")
+                # Update System Health Score on Dashboard
                 score_val = health_score_info.get('score', 'N/A')
-                score_color = ACCENT_COLOR if isinstance(score_val, int) and score_val < 70 else (SECONDARY_COLOR if isinstance(score_val, int) else TEXT_COLOR_SECONDARY)
-                self.label_system_health_score.setText(f"Điểm Sức Khỏe: <font color='{score_color}'><b>{score_val}</b>/100</font>")
+                # score_color = ACCENT_COLOR if isinstance(score_val, int) and score_val < 70 else (SECONDARY_COLOR if isinstance(score_val, int) else TEXT_COLOR_SECONDARY)
+                self.health_score_label.setText(f"🎯 Điểm Sức Khỏe: <b>{score_val}</b>/100")
                 # Tooltip for health score can show issues
                 issues_list = health_score_info.get('issues', [])
                 if issues_list:
-                    self.label_system_health_score.setToolTip("Các vấn đề ảnh hưởng điểm:\n- " + "\n- ".join(issues_list))
+                    self.health_score_label.setToolTip("Các vấn đề ảnh hưởng điểm:\n- " + "\n- ".join(issues_list))
                 else:
-                    self.label_system_health_score.setToolTip("Không có vấn đề nghiêm trọng nào được phát hiện.")
-
-                # System Status - Cập nhật sau cùng để không làm chậm các progress bar
-                def update_dashboard_status():
-                    has_errors_or_warnings = "Lỗi" in str(self.pc_info_dict) or "Error" in str(self.pc_info_dict) or "Cảnh báo" in str(self.pc_info_dict)
-                    warning_count = 0
-                    if pc_data.get("Trạng thái kích hoạt Windows") != "Đã kích hoạt": warning_count +=1
-                    # Thêm các kiểm tra cảnh báo khác ở đây nếu cần
-
-                    if warning_count > 0:
-                        self.label_system_status.setText(f"<font color='{ACCENT_COLOR}'>⚠️ {warning_count} cảnh báo cần xử lý</font>")
-                    elif has_errors_or_warnings and warning_count == 0:
-                         self.label_system_status.setText(f"<font color='{BUTTON_DANGER_BG}'>❌ Có lỗi xảy ra khi lấy thông tin</font>")
-                    else:
-                        self.label_system_status.setText(f"<font color='{SECONDARY_COLOR}'>🟢 Hệ thống hoạt động tốt</font>")
-                QTimer.singleShot(0, update_dashboard_status)
+                    self.health_score_label.setToolTip("Không có vấn đề nghiêm trọng nào được phát hiện.")
 
             # --- Update System Info Tab (Cards) ---
             if hasattr(self, 'card_general_info'): # Check if system info tab elements exist
@@ -2000,13 +1773,29 @@ class PcInfoAppQt(QMainWindow):
         if is_fetch_pc_info:
             self.pc_info_dict = None
             error_text_html = html.escape(f"Lỗi: {error_message}").replace("\n", "<br>")
-            if hasattr(self, 'label_cpu_name'): # Dashboard elements
-                self.label_cpu_name.setText("CPU: Lỗi")
+            if hasattr(self, 'label_cpu_value'): # Dashboard elements
+                self.label_cpu_value.setText("Lỗi")
                 self.progress_cpu.setValue(0)
+                self.progress_cpu.setFormat("Lỗi")
+                self.label_cpu_details.setText("Lỗi lấy thông tin CPU")
+
+                self.label_ram_value.setText("Lỗi")
+                self.progress_ram.setValue(0)
+                self.progress_ram.setFormat("Lỗi")
+                self.label_ram_details.setText("Lỗi lấy thông tin RAM")
+
+                self.label_ssd_value.setText("Lỗi")
+                self.progress_ssd.setValue(0)
+                self.progress_ssd.setFormat("Lỗi")
+                self.label_ssd_details.setText("Lỗi lấy thông tin SSD")
+
+                self.label_gpu_value.setText("Lỗi")
+                self.progress_gpu.setValue(0)
+                self.progress_gpu.setFormat("Lỗi")
+                self.label_gpu_details.setText("Lỗi lấy thông tin GPU")
                 # ... (tương tự cho RAM, SSD, GPU)
-                self.label_system_status.setText(f"<font color='{BUTTON_DANGER_BG}'>❌ Lỗi khi tải dữ liệu</font>")
-                self.label_system_health_score.setText("Điểm Sức Khỏe: Lỗi")
-            
+                self.health_score_label.setText("🎯 Điểm Sức Khỏe: Lỗi")
+
             if hasattr(self, 'card_general_info'): # System Info tab elements
                 card_widgets = [
                     self.card_general_info, self.card_os_info, self.card_cpu_info, 
@@ -2145,31 +1934,33 @@ class PcInfoAppQt(QMainWindow):
     def _run_task_in_thread_qt(self, button_clicked, target_stacked_widget, task_function, task_name_prefix, needs_wmi=False, wmi_namespace="root\\CIMV2", task_args=None, result_type="text"):
         task_name = f"{task_name_prefix}_{task_function.__name__}_{datetime.now().strftime('%H%M%S%f')}" # Unique task name
         
-        # Determine which QTextEdit to update for "Đang thực hiện..."
-        # This assumes the QTextEdit is always at index 0 of the QGroupBox in the QStackedWidget's page 0
-        text_display_for_loading = target_stacked_widget.widget(0).findChild(QTextEdit)
-        if text_display_for_loading:
-            self._update_display_widget(text_display_for_loading, html.escape(f"Đang thực hiện: {task_function.__name__}..."))
-        self._update_status_bar(f"Đang thực hiện: {task_function.__name__}...", "info")
+        if target_stacked_widget: # Only interact with target_stacked_widget if it's provided
+            # Determine which QTextEdit to update for "Đang thực hiện..."
+            # This assumes the QTextEdit is always at index 0 of the QGroupBox in the QStackedWidget's page 0
+            text_display_for_loading = target_stacked_widget.widget(0).findChild(QTextEdit)
+            if text_display_for_loading:
+                self._update_display_widget(text_display_for_loading, html.escape(f"Đang thực hiện: {task_function.__name__}..."))
+            target_stacked_widget.setCurrentIndex(0) # Show text display during loading
+
+            # Explicitly clear highlights. Check if text_display_for_loading is not None before using.
+            # Also, ensure it's a QTextEdit.
+            if text_display_for_loading and isinstance(text_display_for_loading, QTextEdit):
+                self._clear_text_highlights(text_display_for_loading)
+
+            current_page_widget = self.pages_stack.currentWidget()
+            # Check if the current page is one of the new tabs that have savable results
+            if current_page_widget in [self.page_security, self.page_optimize, self.page_network, self.page_update_center]:
+                self.button_save_active_tab_result.setEnabled(False)
         
-        # if task_function.__name__ == "run_disk_speed_test":
-            # self.toast_notifier.show_toast("Đang kiểm tra tốc độ ổ cứng, vui lòng đợi...", parent_widget=target_stacked_widget, duration_ms=5000) # Đã được xử lý bởi _update_status_bar
-        target_stacked_widget.setCurrentIndex(0) # Show text display during loading
+        self._update_status_bar(f"Đang thực hiện: {task_function.__name__}...", "info")
 
         # Clear previous search in the target_widget before running a new task
         # Clear the global search bar
         if hasattr(self, 'global_search_input'):
             self.global_search_input.clear() # Clearing will trigger empty search/filter via _perform_global_search
 
-        # Explicitly clear highlights. Check if text_display_for_loading is not None before using.
-        # Also, ensure it's a QTextEdit.
-        if text_display_for_loading and isinstance(text_display_for_loading, QTextEdit):
-            self._clear_text_highlights(text_display_for_loading)
 
-        current_page_widget = self.pages_stack.currentWidget()
-        # Check if the current page is one of the new tabs that have savable results
-        if current_page_widget in [self.page_security, self.page_optimize, self.page_network]:
-            self.button_save_active_tab_result.setEnabled(False)
+
         # Add other pages here if they also have a "save result" button that needs disabling during task execution
             
         # Đảm bảo task_args là một tuple để unpack an toàn
@@ -2216,26 +2007,27 @@ class PcInfoAppQt(QMainWindow):
         self.current_table_data = data_list # Store for CSV export
 
     def _on_generic_task_completed(self, task_name, data, target_stacked_widget, result_type="text"):
-        if result_type == "table" and isinstance(data, list) and data and isinstance(data[0], dict):
-            table_widget_target = target_stacked_widget.widget(1) # Assuming table is at index 1
-            if isinstance(table_widget_target, QTableWidget):
-                self._populate_table_widget(table_widget_target, data)
-                target_stacked_widget.setCurrentIndex(1) # Switch to table view
-                # self.button_export_csv.setVisible(True) # Button removed
-            else: # Fallback to text if widget at index 1 is not a table
-                result_type = "text" # Force text display
-        
-        if result_type == "text":
-            if task_name.startswith("utility_disk_speed_test_run_disk_speed_test"):
-                self.toast_notifier.show_toast("Kiểm tra tốc độ ổ cứng hoàn tất.", parent_widget=self, toast_type='success')
+        if target_stacked_widget: # Only if we have a target display
+            if result_type == "table" and isinstance(data, list) and data and isinstance(data[0], dict):
+                table_widget_target = target_stacked_widget.widget(1) # Assuming table is at index 1
+                if isinstance(table_widget_target, QTableWidget):
+                    self._populate_table_widget(table_widget_target, data)
+                    target_stacked_widget.setCurrentIndex(1) # Switch to table view
+                else: # Fallback to text if widget at index 1 is not a table
+                    result_type = "text" # Force text display
             
-            text_edit_target = target_stacked_widget.widget(0).findChild(QTextEdit) # TextEdit is in a QGroupBox
-            display_text = self._format_task_result_for_display_generic(data)
-            self._update_display_widget(text_edit_target, display_text)
-            target_stacked_widget.setCurrentIndex(0) # Switch to text view
-            # self.button_export_csv.setVisible(False) # Button removed
+            if result_type == "text": # This will also be the fallback if table logic fails
+                if task_name.startswith("utility_disk_speed_test_run_disk_speed_test"): # Example specific toast
+                    self.toast_notifier.show_toast("Kiểm tra tốc độ ổ cứng hoàn tất.", parent_widget=self, toast_type='success')
+                
+                text_edit_target = target_stacked_widget.widget(0).findChild(QTextEdit) # TextEdit is in a QGroupBox
+                if text_edit_target:
+                    display_text = self._format_task_result_for_display_generic(data)
+                    self._update_display_widget(text_edit_target, display_text)
+                target_stacked_widget.setCurrentIndex(0) # Switch to text view
+            self._update_save_button_state_for_tab_content(target_stacked_widget)
+        
         self._update_status_bar(f"Hoàn thành tác vụ: {task_name.split('_')[1] if '_' in task_name else task_name}", "success")
-        self._update_save_button_state_for_tab_content(target_stacked_widget)
     
     # Removed redundant _on_task_error definition. The one at line 1014 is used.
 
@@ -2439,14 +2231,18 @@ class PcInfoAppQt(QMainWindow):
         """Clears search inputs and highlights when tab changes."""
         self.pages_stack.setCurrentIndex(index) # Ensure stack is synchronized
         current_page_widget = self.pages_stack.widget(index)
+        # Update page title label
+        nav_item = self.nav_list_widget.item(index)
+        self.page_title_label.setText(nav_item.data(Qt.UserRole) or nav_item.text()) # Use stored full text or current text
+
 
         # Show/hide global search bar based on the current tab
-        # Tabs that benefit from search: Security, Optimize, Network, System Info (if it has searchable content)
+       
         if current_page_widget in [self.page_security, self.page_optimize, self.page_network, self.page_system_info]:
-            self.search_bar_container.setVisible(True)
+            self.global_search_input.setVisible(True)
             self.global_search_input.clear() # Clear search when tab changes
         else:
-            self.search_bar_container.setVisible(False)
+            self.global_search_input.setVisible(False)
 
         # Clear highlights in text display areas
         if hasattr(self, 'stacked_widget_results_security'):
@@ -2491,25 +2287,23 @@ class PcInfoAppQt(QMainWindow):
 
     def _update_toggle_nav_button_state(self):
         if self.nav_panel_is_collapsed:
-            if hasattr(self, 'icon_expand_nav') and hasattr(self, 'button_toggle_nav_header'):
-                self.button_toggle_nav_header.setIcon(self.icon_expand_nav)
-                self.button_toggle_nav_header.setText("") # Icon only
-                self.button_toggle_nav_header.setToolTip("Mở rộng menu")
+            if hasattr(self, 'icon_expand_nav') and hasattr(self, 'button_toggle_nav_sidebar'):
+                self.button_toggle_nav_sidebar.setIcon(self.icon_expand_nav)
+                self.button_toggle_nav_sidebar.setText("") # Icon only
+                self.button_toggle_nav_sidebar.setToolTip("Mở rộng menu")
+                self.button_toggle_nav_sidebar.setIconSize(QSize(24,24))
         else:
-            if hasattr(self, 'icon_collapse_nav') and hasattr(self, 'button_toggle_nav_header'):
-                self.button_toggle_nav_header.setIcon(self.icon_collapse_nav)
-                self.button_toggle_nav_header.setText("") # Icon only
-                self.button_toggle_nav_header.setToolTip("Thu gọn menu")
+            if hasattr(self, 'icon_collapse_nav') and hasattr(self, 'button_toggle_nav_sidebar'):
+                self.button_toggle_nav_sidebar.setIcon(self.icon_collapse_nav)
+                self.button_toggle_nav_sidebar.setText(" Thu gọn menu") # Icon and text
+                self.button_toggle_nav_sidebar.setToolTip("Thu gọn menu")
+                self.button_toggle_nav_sidebar.setIconSize(QSize(20,20))
 
     def _toggle_nav_panel_visibility(self):
         self.nav_panel_is_collapsed = not self.nav_panel_is_collapsed
-        
-        current_sizes = self.main_content_splitter.sizes()
-        current_total_width = sum(current_sizes)
-        target_nav_width = 0
 
         if self.nav_panel_is_collapsed:
-            target_nav_width = self.NAV_COLLAPSED_WIDTH
+            self.sidebar_widget.setFixedWidth(self.NAV_COLLAPSED_WIDTH)
             for i in range(self.nav_list_widget.count()):
                 item = self.nav_list_widget.item(i)
                 if item:
@@ -2517,9 +2311,10 @@ class PcInfoAppQt(QMainWindow):
                     if item.data(Qt.UserRole) is None or item.data(Qt.UserRole) != item.text():
                          item.setData(Qt.UserRole, item.text())
                     item.setText("") # Clear text to show only icon for list items
-            # Button text/icon for header toggle is handled by _update_toggle_nav_button_state
+            self.app_title_label_sidebar.setVisible(False)
+            self.app_subtitle_label_sidebar.setVisible(False)
         else:
-            target_nav_width = self.NAV_EXPANDED_WIDTH
+            self.sidebar_widget.setFixedWidth(self.NAV_EXPANDED_WIDTH)
             for i in range(self.nav_list_widget.count()):
                 item = self.nav_list_widget.item(i)
                 if item:
@@ -2527,8 +2322,9 @@ class PcInfoAppQt(QMainWindow):
                     if original_text is not None:
                         item.setText(original_text) # Restore text
 
-        content_pane_width = current_total_width - target_nav_width
-        self.main_content_splitter.setSizes([target_nav_width, content_pane_width if content_pane_width > 0 else 0])
+        self.app_title_label_sidebar.setVisible(True)
+        self.app_subtitle_label_sidebar.setVisible(True)
+        # QSplitter is no longer used for main layout, fixed width is set directly.
         self._update_toggle_nav_button_state()
 
     def _style_save_button(self, button, on_click_action):
@@ -2771,6 +2567,32 @@ class PcInfoAppQt(QMainWindow):
                                         needs_wmi=True, task_args=[printer_name.strip()])
         elif ok and not printer_name.strip():
             QMessageBox.information(self, "Thông báo", "Không có tên máy in nào được nhập.")
+        # Nếu nhấn Cancel (ok=False), không làm gì cả
+
+    # --- Dashboard Quick Action Handlers ---
+    def on_dashboard_cleanup_system_clicked(self):
+        self._run_task_in_thread_qt(self.btn_cleanup_system, 
+                                    target_stacked_widget=None, # No specific tab display for quick action
+                                    task_function=clear_temporary_files, 
+                                    task_name_prefix="dashboard_cleanup", 
+                                    needs_wmi=False)
+
+    def on_dashboard_boost_pc_clicked(self):
+        # For now, this is a placeholder. A real "boost" might involve multiple actions.
+        QMessageBox.information(self, "Đang phát triển", "Chức năng 'Tăng Tốc PC' đang được phát triển và sẽ sớm có mặt!")
+        self._update_status_bar("Tăng Tốc PC (Đang phát triển)", "info")
+
+    def on_dashboard_security_scan_clicked(self):
+        self._run_task_in_thread_qt(self.btn_security_scan, 
+                                    target_stacked_widget=None, 
+                                    task_function=run_windows_defender_scan, 
+                                    task_name_prefix="dashboard_security_scan", 
+                                    needs_wmi=False, task_args=["QuickScan"])
+
+    def on_dashboard_update_drivers_clicked(self):
+        QMessageBox.information(self, "Đang phát triển", "Chức năng 'Cập Nhật Driver' đang được phát triển và sẽ sớm có mặt!")
+        self._update_status_bar("Cập Nhật Driver (Đang phát triển)", "info")
+
         # Nếu nhấn Cancel (ok=False), không làm gì cả
 
 
