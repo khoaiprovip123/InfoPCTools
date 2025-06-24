@@ -18,6 +18,56 @@ import tempfile # For disk speed test
 import win32serviceutil, win32service # For optimizing windows services
 import json # Thêm import json cho phần if __name__ == "__main__":
 import winreg # Thêm import winreg để truy cập Registry
+import re # Thêm import re để sử dụng biểu thức chính quy
+
+# Try to import pynvml for NVIDIA GPU monitoring
+try:
+    import pynvml
+    HAS_PYNVML = True
+except ImportError:
+    HAS_PYNVML = False
+    logging.warning("pynvml not found. Real-time NVIDIA GPU monitoring will be unavailable. Install with 'pip install pynvml'.")
+
+def get_gpu_realtime_usage():
+    """
+    Lấy thông tin sử dụng GPU theo thời gian thực (tải, bộ nhớ).
+    Ưu tiên NVIDIA (dùng pynvml).
+    Trả về dict {'load_percent', 'memory_used_mb', 'memory_total_mb'} hoặc None nếu không lấy được.
+    """
+    if HAS_PYNVML:
+        try:
+            pynvml.nvmlInit()
+            device_count = pynvml.nvmlDeviceGetCount()
+            if device_count > 0:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0) # Lấy GPU đầu tiên
+                utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                
+                gpu_load = utilization.gpu # GPU utilization in percent
+                mem_used_mb = memory_info.used // (1024 * 1024)
+                mem_total_mb = memory_info.total // (1024 * 1024)
+
+                return {
+                    'load_percent': gpu_load,
+                    'memory_used_mb': mem_used_mb,
+                    'memory_total_mb': mem_total_mb
+                }
+            else:
+                logging.debug("Không tìm thấy thiết bị NVIDIA nào.")
+                return None
+        except pynvml.NVMLError as error:
+            logging.warning(f"Lỗi NVML khi lấy thông tin GPU: {error}")
+            return None
+        except Exception as e:
+            logging.error(f"Lỗi không xác định khi lấy thông tin GPU (pynvml): {e}", exc_info=True)
+            return None
+        finally:
+            try:
+                pynvml.nvmlShutdown()
+            except pynvml.NVMLError as error:
+                # This can happen if nvmlInit failed, no need to log again
+                pass
+    return None # Không có pynvml hoặc không tìm thấy GPU
 
 # --- Cấu hình Logging ---
 # Cấu hình cơ bản, có thể được ghi đè ở file chính
@@ -2119,6 +2169,43 @@ def apply_gaming_mode(enable=True):
     # - Tạm dừng các services không cần thiết
     # - Tối ưu hóa network settings
     return {"status": "info", "message": f"Chế độ Gaming đã được {action} (chức năng đang phát triển)."}
+
+def set_high_performance_power_plan():
+    """
+    Tìm và kích hoạt kế hoạch nguồn (Power Plan) 'High Performance'.
+    Yêu cầu quyền Administrator để kích hoạt nếu nó không phải là plan hiện tại.
+    """
+    if not is_admin():
+        return {"status": "warning", "message": "Yêu cầu quyền Administrator để thay đổi Power Plan."}
+    
+    high_perf_guid = None
+    try:
+        # Tìm GUID cho High Performance plan
+        process = subprocess.run(["powercfg", "/list"], capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+        if process.returncode == 0:
+            for line in process.stdout.splitlines():
+                if "high performance" in line.lower() or "hiệu suất cao" in line.lower():
+                    # Line format: Power Scheme GUID: guid-guid-guid  (High performance)
+                    match = re.search(r'GUID: ([\w-]+)', line)
+                    if match:
+                        high_perf_guid = match.group(1).strip()
+                        break
+        
+        if not high_perf_guid:
+            return {"status": "error", "message": "Không tìm thấy Power Plan 'High Performance'."}
+
+        # Kích hoạt plan
+        logging.info(f"Activating High Performance power plan with GUID: {high_perf_guid}")
+        process_set = subprocess.run(["powercfg", "/setactive", high_perf_guid], capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+
+        if process_set.returncode == 0:
+            return {"status": "success", "message": "Đã kích hoạt thành công Power Plan 'High Performance'."}
+        else:
+            return {"status": "error", "message": f"Lỗi khi kích hoạt Power Plan 'High Performance'.\n{process_set.stderr.strip()}"}
+
+    except Exception as e:
+        logging.error(f"Lỗi khi thay đổi Power Plan: {e}", exc_info=True)
+        return {"status": "error", "message": f"Lỗi không xác định khi thay đổi Power Plan: {str(e)}"}
 
 def manage_startup_item(item_identifier, action):
     """

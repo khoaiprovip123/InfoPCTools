@@ -1,11 +1,96 @@
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QGridLayout, QLabel, QProgressBar, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QGridLayout, QLabel, QProgressBar, QPushButton, QFrame, QSpacerItem, QSizePolicy
 )
 from PyQt5.QtCore import Qt
-
 # Bạn có thể cần import thêm các hằng số hoặc hàm helper nếu chúng được sử dụng trực tiếp
 # trong việc tạo UI của tab này và không được truyền từ PcInfoAppQt.
 # Ví dụ: from .gui_qt import DEFAULT_FONT_FAMILY, H1_FONT_SIZE, BODY_FONT_SIZE (nếu cần)
+from PyQt5.QtGui import QFont, QColor, QIcon
+
+class PerformanceCard(QFrame):
+    def __init__(self, icon_char, title, object_name_prefix=""):
+        super().__init__()
+        self.setObjectName(f"{object_name_prefix}Card")
+        self.setProperty("cardType", object_name_prefix)
+        
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(0)
+        
+        # Header với icon và title
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(15)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        icon_label = QLabel(icon_char)
+        icon_label.setObjectName(f"{object_name_prefix}Icon")
+        
+        title_label = QLabel(title)
+        title_label.setObjectName(f"{object_name_prefix}Title")
+        
+        header_layout.addWidget(icon_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        
+        layout.addLayout(header_layout)
+        
+        # Spacer
+        layout.addSpacerItem(QSpacerItem(20, 15, QSizePolicy.Minimum, QSizePolicy.Fixed))
+
+        # Giá trị chính
+        self.value_label = QLabel("0%")
+        self.value_label.setObjectName(f"{object_name_prefix}Value")
+        self.value_label.setWordWrap(True)
+        layout.addWidget(self.value_label)
+        
+        # Thanh tiến trình
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setObjectName(f"{object_name_prefix}Progress")
+        layout.addWidget(self.progress_bar)
+        
+        # Chi tiết
+        self.details_label = QLabel("Đang tải...")
+        self.details_label.setObjectName(f"{object_name_prefix}Details")
+        self.details_label.setWordWrap(True)
+        layout.addWidget(self.details_label)
+
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def update_value(self, new_value_text):
+        self.value_label.setText(new_value_text)
+
+    def update_details(self, new_details_text):
+        self.details_label.setText(new_details_text)
+
+    def update_progress(self, new_progress_value):
+        self.progress_bar.setValue(new_progress_value)
+
+class QuickActionButton(QPushButton):
+    def __init__(self, text, icon_text, color):
+        super().__init__()
+        self.setText(f"{icon_text} {text}")
+        self.setObjectName("ActionBtn") # For QSS styling
+        self.setProperty("btnColor", color) # Custom property for QSS
+        self.setFont(QFont("Segoe UI", 10)) # Set font here, QSS will override some properties
+        self.setFixedHeight(40) # Set fixed height
+    
+    def darken_color(self, color, factor=0.2):
+        # Simple color darkening logic (can be expanded for more precise control)
+        # For now, use a simple mapping or direct manipulation if colors are known
+        qcolor = QColor(color)
+        darker_qcolor = qcolor.darker(100 + int(factor * 100)) # 100 means no change, 200 means twice as dark
+        return darker_qcolor.name()
+    # Override setStyleSheet to apply dynamic color
+    def setStyleSheet(self, styleSheet):
+        # This method is called by Qt when setting QSS.
+        # We need to ensure our dynamic color is applied.
+        # The actual styling is now handled in gui_qt.py's _apply_styles
+        # using the 'btnColor' property.
+        super().setStyleSheet(styleSheet)
 
 def create_dashboard_tab_content(parent_app):
     """
@@ -16,74 +101,35 @@ def create_dashboard_tab_content(parent_app):
     # parent_app.page_dashboard là QWidget của tab, layout sẽ được đặt cho nó
     layout = QVBoxLayout(parent_app.page_dashboard) 
     layout.setContentsMargins(15, 15, 15, 15)
-    layout.setSpacing(15)
+    layout.setSpacing(20)
 
-    dashboard_scroll_area = QScrollArea()
+    # Sử dụng QScrollArea để nội dung có thể cuộn khi cửa sổ nhỏ lại
+    dashboard_scroll_area = QScrollArea() 
     dashboard_scroll_area.setWidgetResizable(True)
     dashboard_scroll_area.setObjectName("DashboardScrollArea")
+    dashboard_scroll_area.setStyleSheet("QScrollArea { border: none; }")
     
-    dashboard_content_widget = QWidget()
+    dashboard_content_widget = QWidget() # Widget chứa toàn bộ nội dung của scroll area
     dashboard_content_layout = QVBoxLayout(dashboard_content_widget)
-    dashboard_content_layout.setSpacing(25)
+    dashboard_content_layout.setSpacing(20)
 
-    stats_grid_widget = QWidget()
-    stats_grid_widget.setObjectName("StatsGridWidget")
-    parent_app.stats_grid_layout = QGridLayout(stats_grid_widget) # Gán vào parent_app
-    parent_app.stats_grid_layout.setSpacing(10)
-
-    def create_hw_card_content_local(title_text, icon_char, object_name_prefix):
-        card_widget = QWidget()
-        card_widget.setObjectName(f"{object_name_prefix}Card")
-        card_widget.setProperty("cardType", object_name_prefix)
-        card_layout = QVBoxLayout(card_widget)
-
-        stat_header_widget = QWidget()
-        stat_header_layout = QHBoxLayout(stat_header_widget)
-        stat_title_label = QLabel(title_text)
-        stat_title_label.setObjectName(f"{object_name_prefix}Title")
-        stat_header_layout.addWidget(stat_title_label, 1)
-        
-        stat_icon_label = QLabel(icon_char)
-        stat_icon_label.setObjectName(f"{object_name_prefix}Icon")
-        stat_icon_label.setFixedSize(36,36)
-        stat_icon_label.setAlignment(Qt.AlignCenter)
-        stat_header_layout.addWidget(stat_icon_label)
-        card_layout.addWidget(stat_header_widget)
-
-        hw_value_label = QLabel("0%") 
-        hw_value_label.setObjectName(f"{object_name_prefix}Value")
-        card_layout.addWidget(hw_value_label)
-
-        hw_progress = QProgressBar()
-        hw_progress.setRange(0, 100)
-        hw_progress.setTextVisible(True)
-        hw_progress.setFixedHeight(8)
-        hw_progress.setObjectName(f"{object_name_prefix}Progress")
-        hw_progress.setValue(0) 
-        card_layout.addWidget(hw_progress)
-
-        hw_details_label = QLabel("Đang tải...")
-        hw_details_label.setObjectName(f"{object_name_prefix}Details")
-        hw_details_label.setWordWrap(True)
-        card_layout.addWidget(hw_details_label)
-        return card_widget, hw_value_label, hw_progress, hw_details_label
-
-    parent_app.card_cpu, parent_app.label_cpu_value, parent_app.progress_cpu, parent_app.label_cpu_details = create_hw_card_content_local("CPU Usage", "🖥️", "cpu")
-    parent_app.stats_grid_layout.addWidget(parent_app.card_cpu, 0, 0)
-
-    parent_app.card_ram, parent_app.label_ram_value, parent_app.progress_ram, parent_app.label_ram_details = create_hw_card_content_local("RAM Usage", "🧠", "ram")
-    parent_app.stats_grid_layout.addWidget(parent_app.card_ram, 0, 1)
-
-    parent_app.card_ssd, parent_app.label_ssd_value, parent_app.progress_ssd, parent_app.label_ssd_details = create_hw_card_content_local("SSD Usage", "💾", "ssd")
-    parent_app.stats_grid_layout.addWidget(parent_app.card_ssd, 1, 0)
-
-    parent_app.card_gpu, parent_app.label_gpu_value, parent_app.progress_gpu, parent_app.label_gpu_details = create_hw_card_content_local("GPU Usage", "🎮", "gpu")
-    parent_app.stats_grid_layout.addWidget(parent_app.card_gpu, 1, 1)
+    # --- Phần 1: Các thẻ thông tin (PerformanceCard) ---
+    info_cards_grid_layout = QGridLayout()
+    info_cards_grid_layout.setSpacing(20)
     
-    parent_app.stats_grid_layout.setColumnStretch(0, 1)
-    parent_app.stats_grid_layout.setColumnStretch(1, 1)
-    dashboard_content_layout.addWidget(stats_grid_widget)
+    # Lưu các card vào parent_app để dễ dàng cập nhật
+    parent_app.cpu_card = PerformanceCard("🖥️", "Sử dụng CPU", "cpu")
+    parent_app.ram_card = PerformanceCard("🧠", "Sử dụng RAM", "ram")
+    parent_app.ssd_card = PerformanceCard("💾", "Sử dụng SSD", "ssd")
+    parent_app.gpu_card = PerformanceCard("🎮", "Sử dụng GPU", "gpu")
 
+    info_cards_grid_layout.addWidget(parent_app.cpu_card, 0, 0)
+    info_cards_grid_layout.addWidget(parent_app.ram_card, 0, 1)
+    info_cards_grid_layout.addWidget(parent_app.ssd_card, 1, 0)
+    info_cards_grid_layout.addWidget(parent_app.gpu_card, 1, 1)
+    dashboard_content_layout.addLayout(info_cards_grid_layout)
+
+    # Phần "Tối ưu nhanh"
     quick_actions_widget = QWidget()
     quick_actions_widget.setObjectName("QuickActionsWidget")
     quick_actions_layout = QVBoxLayout(quick_actions_widget)
@@ -96,23 +142,23 @@ def create_dashboard_tab_content(parent_app):
     parent_app.action_buttons_grid_layout.setSpacing(15)
 
     actions = [
-        ("btn_cleanup_system", "🧹 Dọn Dẹp Hệ Thống", parent_app.on_dashboard_cleanup_system_clicked),
-        ("btn_boost_pc", "🚀 Tăng Tốc PC", parent_app.on_dashboard_boost_pc_clicked),
-        ("btn_security_scan", "🛡️ Quét Bảo Mật", parent_app.on_dashboard_security_scan_clicked),
-        ("btn_update_drivers", "🔄 Cập Nhật Driver", parent_app.on_dashboard_update_drivers_clicked)
+        ("Dọn Dẹp Hệ Thống", "🗑️", "#ff6b35", parent_app.on_dashboard_cleanup_system_clicked),
+        ("Tăng Tốc PC", "🚀", "#e74c3c", parent_app.on_dashboard_boost_pc_clicked),
+        ("Quét Bảo Mật", "🛡️", "#3498db", parent_app.on_dashboard_security_scan_clicked),
+        ("Cập Nhật Driver", "💿", "#1abc9c", parent_app.on_dashboard_update_drivers_clicked)
     ]
 
-    for i, (attr_name, text, handler) in enumerate(actions):
-        btn = QPushButton(text)
-        btn.setObjectName("ActionBtn")
+    for i, (text, icon, color, handler) in enumerate(actions):
+        btn = QuickActionButton(text, icon, color) # QuickActionButton now handles its own QSS based on 'btnColor' property
         btn.clicked.connect(handler)
-        setattr(parent_app, attr_name, btn) # Gán nút vào parent_app
+        setattr(parent_app, f"btn_dashboard_quick_action_{i}", btn) # Store button as an attribute
         parent_app.action_buttons_grid_layout.addWidget(btn, 0, i)
         parent_app.action_buttons_grid_layout.setColumnStretch(i, 1)
 
     quick_actions_layout.addLayout(parent_app.action_buttons_grid_layout)
-    dashboard_content_layout.addWidget(quick_actions_widget)
+    dashboard_content_layout.addWidget(quick_actions_widget) # Thêm phần Tối ưu nhanh vào layout chính
     dashboard_content_layout.addStretch(1)
+    dashboard_content_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding)) # Push content to top
 
     dashboard_scroll_area.setWidget(dashboard_content_widget)
     layout.addWidget(dashboard_scroll_area)

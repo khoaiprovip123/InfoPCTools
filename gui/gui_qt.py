@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QTextOption, QColor, QTextCharFormat, QTextCursor
 from PyQt5.QtCore import Qt, QTimer, QSize # Import QSize, QThread, pyqtSignal removed
 
+import psutil # Import psutil for real-time usage
 import win32com.client # For CoInitialize/CoUninitialize in threads
 
 # Import các hàm cần thiết từ core
@@ -44,8 +45,9 @@ from core.pc_info_functions import ( # type: ignore
     flush_dns_cache,          # Ví dụ: ipconfig /flushdns
     calculate_system_health_score, # Cho System Health Score
     apply_gaming_mode,             # Cho Gaming Mode
+    set_high_performance_power_plan, # Cho Tăng Tốc PC
     manage_startup_item,           # Cho Startup Manager (enable/disable/delete)
-    get_windows_update_status,     # Cho Update Center
+    get_windows_update_status,     # Cho Update Center (placeholder)
     list_printers, remove_printer, clear_print_queue, restart_print_spooler_service # Printer utilities
 )
 from core.pc_info_manager import (
@@ -54,6 +56,7 @@ from core.pc_info_manager import (
     format_user_info_for_display # Import hàm này
 )
 # Import WorkerThread từ file mới
+from core.pc_info_functions import get_gpu_realtime_usage # Import hàm lấy GPU real-time
 from .gui_worker import WorkerThread
 # Import các hàm tạo giao diện tab từ các file riêng
 from .gui_dashboard_tab import create_dashboard_tab_content # type: ignore
@@ -105,17 +108,19 @@ class ToastNotification(QLabel):
         self.adjustSize() # Điều chỉnh kích thước dựa trên nội dung mới
 
         if parent_widget:
-            # Lấy tọa độ toàn cục và kích thước của parent_widget
-            # để định vị chính xác cửa sổ toast (là top-level)
-            parent_top_left_global = parent_widget.mapToGlobal(parent_widget.rect().topLeft())
-            parent_width = parent_widget.width()
-            parent_height = parent_widget.height()
+            # Lấy tọa độ toàn cục của cửa sổ chính (QMainWindow)
+            main_window = self.parentWidget() # Assuming ToastNotification's parent is the QMainWindow
+            if not isinstance(main_window, QMainWindow): # Fallback if parent is not QMainWindow
+                main_window = QApplication.instance().activeWindow()
+                if not isinstance(main_window, QMainWindow):
+                    main_window = parent_widget # Use parent_widget as fallback if no QMainWindow found
 
-            margin = 20  # Khoảng cách từ các cạnh của parent_widget
+            main_window_rect = main_window.geometry()
+            
+            # Tính toán vị trí ở giữa phía dưới của cửa sổ chính
+            toast_x = main_window_rect.x() + (main_window_rect.width() - self.width()) // 2
+            toast_y = main_window_rect.y() + main_window_rect.height() - self.height() - 30 # 30px từ dưới lên
 
-            # Tính toán vị trí cho góc dưới-phải của parent_widget
-            toast_x = parent_top_left_global.x() + parent_width - self.width() - margin
-            toast_y = parent_top_left_global.y() + parent_height - self.height() - margin
             
             # Đảm bảo toast không bị đẩy ra ngoài màn hình nếu parent_widget quá nhỏ hoặc ở gần cạnh màn hình
             # (Có thể thêm logic kiểm tra screen geometry ở đây nếu cần thiết)
@@ -218,7 +223,7 @@ class PcInfoAppQt(QMainWindow):
         self._create_widgets()
         self._apply_styles()
         self.toast_notifier = ToastNotification(self) # Khởi tạo toast notifier
-
+        self._start_realtime_update_timer() # Bắt đầu timer cập nhật liên tục
         self.fetch_pc_info_threaded()
 
     def _load_logo(self):
@@ -243,6 +248,10 @@ class PcInfoAppQt(QMainWindow):
         self.global_search_timer = QTimer(self)
         self.global_search_timer.setSingleShot(True)
         self.global_search_timer.timeout.connect(self._perform_global_search)
+        # Timer cho cập nhật phần trăm sử dụng liên tục
+        self.realtime_update_timer = QTimer(self)
+        self.realtime_update_timer.timeout.connect(self._update_realtime_usage)
+
 
     def _create_widgets(self):
         self.central_widget = QWidget()
@@ -1112,56 +1121,94 @@ class PcInfoAppQt(QMainWindow):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
             }}
-            /* Stat Card Styling */
-            QWidget[objectName$="Card"] {{ /* Targets cpuCard, ramCard, etc. */
+            /* Performance Card Styling */
+            QFrame[cardType] {{ 
                 background-color: {STAT_CARD_BG};
-                border-radius: 16px; /* 20px in HTML */
-                padding: 20px; /* 30px in HTML */
-                /* Add top border with gradient or QGraphicsDropShadowEffect for shadow */
-                /* border-top: 4px solid {PRIMARY_COLOR}; Fallback, gradient is harder */
+                border-radius: 12px;
+                padding: 20px;
+                border: 1px solid #e0e0e0;
             }}
-            QWidget[objectName="cpuCard"] {{ border-top: 4px solid {PRIMARY_COLOR}; }}
-            QWidget[objectName="ramCard"] {{ border-top: 4px solid {SECONDARY_COLOR}; }}
-            QWidget[objectName="ssdCard"] {{ border-top: 4px solid {ACCENT_COLOR}; }}
-            QWidget[objectName="gpuCard"] {{ border-top: 4px solid {PURPLE_COLOR}; }}
+            QFrame[cardType="cpu"] {{ border-top: 4px solid {PRIMARY_COLOR}; }}
+            QFrame[cardType="ram"] {{ border-top: 4px solid {SECONDARY_COLOR}; }}
+            QFrame[cardType="ssd"] {{ border-top: 4px solid {ACCENT_COLOR}; }}
+            QFrame[cardType="gpu"] {{ border-top: 4px solid {PURPLE_COLOR}; }}
 
-            QLabel[objectName$="Title"] {{ /* cpuTitle, ramTitle */
-                font-size: {BODY_FONT_SIZE}pt; /* 16px in HTML */
-                font-weight: 600;
-                color: {STAT_CARD_TITLE_COLOR};
-            }}
-            QLabel[objectName$="Icon"] {{
-                font-size: {H1_FONT_SIZE}pt; /* 20px in HTML */
+            QLabel[objectName$="Icon"] {{ 
+                font-size: 20pt;
+                min-width: 48px;
+                max-width: 48px;
+                min-height: 48px;
+                max-height: 48px;
+                border-radius: 24px; /* Circle */
                 color: white;
-                border-radius: 10px; /* 12px in HTML */
-                padding: 5px; /* Add some padding inside the icon label */
-                /* Specific backgrounds per icon */
+                qproperty-alignment: 'AlignCenter';
             }}
-            QLabel#cpuIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3b82f6, stop:1 #1d4ed8); }}
-            QLabel#ramIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #10b981, stop:1 #059669); }}
-            QLabel#ssdIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #d97706); }}
-            QLabel#gpuIcon {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8b5cf6, stop:1 #7c3aed); }}
+            QLabel#cpuIcon {{ background-color: {PRIMARY_COLOR}; }}
+            QLabel#ramIcon {{ background-color: {SECONDARY_COLOR}; }}
+            QLabel#ssdIcon {{ background-color: {ACCENT_COLOR}; }}
+            QLabel#gpuIcon {{ background-color: {PURPLE_COLOR}; }}
 
-            QLabel[objectName$="Value"] {{ /* cpuValue, ramValue */
-                font-size: {H1_FONT_SIZE + 10}pt; /* 32px in HTML */
-                font-weight: bold; /* 700 */
-                color: {STAT_CARD_VALUE_COLOR};
-                margin-bottom: 5px; /* 10px in HTML */
+            QLabel[objectName$="Title"] {{ 
+                font-size: {BODY_FONT_SIZE + 2}pt;
+                
+                font-weight: 600;
+                color: {TEXT_COLOR_PRIMARY};
+            }} 
+            QLabel[objectName$="Value"] {{ 
+                font-size: {H1_FONT_SIZE + 12}pt; /* Large value */
+                font-weight: bold;
+                color: {TEXT_COLOR_PRIMARY};
+                margin-top: 5px;
+                margin-bottom: 0px;
+            }} 
+            QProgressBar[objectName$="Progress"] {{ 
+                border: none;
+                background-color: {INPUT_BG};
+                height: 10px;
+                border-radius: 5px;
+                margin-top: 5px;
             }}
-            QLabel[objectName$="Details"] {{ /* cpuDetails, ramDetails */
+            QProgressBar[objectName$="Progress"]::chunk {{
+                border-radius: 5px;
+            }}
+            QProgressBar#cpuProgress::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {PRIMARY_COLOR}, stop:1 #60a5fa); }}
+            QProgressBar#ramProgress::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {SECONDARY_COLOR}, stop:1 #34d399); }}
+            QProgressBar#ssdProgress::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {ACCENT_COLOR}, stop:1 #fbbf24); }}
+            QProgressBar#gpuProgress::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {PURPLE_COLOR}, stop:1 #a78bfa); }}
+
+            /* QuickActionButton Styling */
+            QPushButton#ActionBtn {{
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 20px;
+                text-align: left;
+                font-weight: 600;
+            }}
+            /* Dynamic background color for QuickActionButton based on btnColor property */
+            QPushButton#ActionBtn[btnColor="#ff6b35"] {{ background-color: #ff6b35; }}
+            QPushButton#ActionBtn[btnColor="#ff6b35"]:hover {{ background-color: #e55a2b; }}
+            QPushButton#ActionBtn[btnColor="#e74c3c"] {{ background-color: #e74c3c; }}
+            QPushButton#ActionBtn[btnColor="#e74c3c"]:hover {{ background-color: #d32f2f; }}
+            QPushButton#ActionBtn[btnColor="#3498db"] {{ background-color: #3498db; }}
+            QPushButton#ActionBtn[btnColor="#3498db"]:hover {{ background-color: #2980b9; }}
+            QPushButton#ActionBtn[btnColor="#1abc9c"] {{ background-color: #1abc9c; }}
+            QPushButton#ActionBtn[btnColor="#1abc9c"]:hover {{ background-color: #16a085; }}
+
+            QLabel[objectName$="Details"] {{
                 font-size: {BODY_FONT_SIZE -1}pt; /* 14px in HTML */
                 color: {STAT_CARD_DETAILS_COLOR};
-                line-height: 1.5; /* Not directly settable, QLabel wordwrap handles it */
+                margin-top: 8px;
             }}
             /* Styles for result display QTextEdit and QTableWidget widgets */
-            QTextEdit#ResultTextEdit, QTextEdit#SecurityResultTextEdit, QTextEdit#OptimizeResultTextEdit, QTextEdit#NetworkResultTextEdit, QTextEdit#FixesResultTextEdit, QTextEdit#text_update_results_qt {{
+            QTextEdit#ResultTextEdit, QTextEdit#SecurityResultTextEdit, QTextEdit#OptimizeResultTextEdit, QTextEdit#NetworkResultTextEdit, QTextEdit#FixesResultTextEdit, QTextEdit#text_update_results_qt {{ 
                  font-family: "{MONOSPACE_FONT_FAMILY}";
                  font-size: {MONOSPACE_FONT_SIZE}pt;
                  background-color: #FAFAFA; /* Slightly different background for readability */
                  border: 1px solid {BORDER_COLOR_LIGHT}; /* Viền nhẹ cho ô text kết quả */
                  border-radius: 5px; /* Bo góc */
-            }}
-            QTableWidget#ResultTableWidget {{
+            }} 
+            QTableWidget#ResultTableWidget {{ 
                 font-family: "{DEFAULT_FONT_FAMILY}";
                 font-size: {BODY_FONT_SIZE-1}pt; /* Slightly smaller for table data */
                 alternate-background-color: #F5F5F5; /* Light grey for alternate rows */
@@ -1180,133 +1227,118 @@ class PcInfoAppQt(QMainWindow):
                 font-weight: bold;
             }}
             /* Styling for QMessageBox */
-            QMessageBox {{
+            QMessageBox {{ 
                 background-color: {WINDOW_BG};
                 /* dialogTitleBarButtons-icon-size: 0px; */ /* Hide title bar buttons if desired, tricky */
-            }}
+            }} 
             QMessageBox QLabel {{ /* Message text */
                 color: {TEXT_COLOR_PRIMARY};
                 font-size: {BODY_FONT_SIZE}pt;
                 background-color: transparent;
-            }}
+            }} 
             QMessageBox QPushButton {{ /* Buttons in QMessageBox */
                 background-color: {BUTTON_SECONDARY_BG};
-                color: {BUTTON_SECONDARY_TEXT}; 
+                color: {TEXT_COLOR_PRIMARY}; 
                 border: 1px solid transparent; /* Viền trong suốt */
                 border-radius: 4px;
                 padding: 6px 12px;
                 min-width: 70px;
-            }}
-            QMessageBox QPushButton:hover {{
+            }} 
+            QMessageBox QPushButton:hover {{ 
                 background-color: {BUTTON_SECONDARY_HOVER};
-            }}
-            QMessageBox QPushButton:pressed {{
+            }} 
+            QMessageBox QPushButton:pressed {{ 
                 background-color: {BUTTON_SECONDARY_PRESSED};
-            }}
+            }} 
             /* Styling for SetDnsDialog */
-            QDialog#SetDnsDialog {{
+            QDialog#SetDnsDialog {{ 
                 background-color: {WINDOW_BG};
-            }}
-            QDialog#SetDnsDialog QLabel {{
+            }} 
+            QDialog#SetDnsDialog QLabel {{ 
                 color: {TEXT_COLOR_PRIMARY};
                 background-color: transparent;
-            }}
-            QDialog#SetDnsDialog QLineEdit {{
+            }} 
+            QDialog#SetDnsDialog QLineEdit {{ 
                 background-color: {INPUT_BG};
                 border: 1px solid {INPUT_BORDER_COLOR}; /* Viền cho QLineEdit trong dialog DNS */
                 border-radius: 4px;
                 padding: 5px;
                 color: {TEXT_COLOR_PRIMARY};
-            }}
-            QDialog#SetDnsDialog QLineEdit:focus {{
+            }} 
+            QDialog#SetDnsDialog QLineEdit:focus {{ 
                 border: 1px solid {ACCENT_COLOR}; /* Viền cam khi focus */
-            }}
-            QDialog#SetDnsDialog QPushButton {{ /* Buttons inside SetDnsDialog (from QDialogButtonBox) */
+            }} 
+            QDialog#SetDnsDialog QPushButton {{ /* Buttons inside SetDnsDialog (from QDialogButtonBox) */ 
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {BUTTON_SECONDARY_TEXT};
                 border: 1px solid transparent; /* Viền trong suốt */
                 border-radius: 4px; 
                 padding: 6px 12px;
                 min-width: 70px;
-            }}
-            QDialog#SetDnsDialog QPushButton:hover {{
+            }} 
+            QDialog#SetDnsDialog QPushButton:hover {{ 
                 background-color: {BUTTON_SECONDARY_HOVER};
-            }}
-            QDialog#SetDnsDialog QPushButton:pressed {{
+            }} 
+            QDialog#SetDnsDialog QPushButton:pressed {{ 
                 background-color: {BUTTON_SECONDARY_PRESSED};
-            }}
+            }} 
             /* Style the OK button in SetDnsDialog as a primary button */
-            QDialog#SetDnsDialog QPushButton[text="OK"], QDialog#SetDnsDialog QPushButton[text="&OK"] {{
+            QDialog#SetDnsDialog QPushButton[text="OK"], QDialog#SetDnsDialog QPushButton[text="&OK"] {{ 
                 background-color: {BUTTON_PRIMARY_BG};
                 color: white; 
-            }}
-            QDialog#SetDnsDialog QPushButton[text="OK"]:hover, QDialog#SetDnsDialog QPushButton[text="&OK"]:hover {{
+            }} 
+            QDialog#SetDnsDialog QPushButton[text="OK"]:hover, QDialog#SetDnsDialog QPushButton[text="&OK"]:hover {{ 
                 background-color: {BUTTON_PRIMARY_HOVER};
-            }}
-            QDialog#SetDnsDialog QPushButton[text="OK"]:pressed, QDialog#SetDnsDialog QPushButton[text="&OK"]:pressed {{
+            }} 
+            QDialog#SetDnsDialog QPushButton[text="OK"]:pressed, QDialog#SetDnsDialog QPushButton[text="&OK"]:pressed {{ 
                 font-weight: bold; 
-            }}
-            QPushButton#NavToggleSidebarButton {{
+            }} 
+            QPushButton#NavToggleSidebarButton {{ 
                 background-color: transparent;
                 border: none; /* Nút toggle nav không có viền */
                 padding: 5px; /* Adjust as needed */
             color: {SIDEBAR_TEXT_COLOR}; /* Icon/text color */
-            }}
-            QPushButton#NavToggleSidebarButton:hover {{
+            }} 
+            QPushButton#NavToggleSidebarButton:hover {{ 
                 background-color: {BUTTON_SECONDARY_HOVER}; /* Light hover effect */
-            }}
-            QLabel#AppTitleLabel {{
+            }} 
+            QLabel#AppTitleLabel {{ 
                 /* Style for app title if needed, e.g., color, padding */
-            }}
-            QPushButton#OneClickOptimizeButton {{
+            }} 
+            QPushButton#OneClickOptimizeButton {{ 
                 background-color: {ACCENT_COLOR};
                 color: white;
                 padding: 10px 18px; /* Lớn hơn một chút */
                 border-radius: 6px; /* Bo góc */
                 font-weight: bold;
-            }}
-            QPushButton#OneClickOptimizeButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }}
-            QPushButton#GamingModeButton {{
+            }} 
+            QPushButton#OneClickOptimizeButton:hover {{ background-color: {ACCENT_COLOR_HOVER}; }} 
+            QPushButton#GamingModeButton {{ 
                 background-color: {BUTTON_SECONDARY_BG};
                 color: {TEXT_COLOR_PRIMARY};
                 border-radius: 6px; /* Bo góc */
-            }}
-            QPushButton#GamingModeButton:checked {{
+            }} 
+            QPushButton#GamingModeButton:checked {{ 
                 background-color: {SECONDARY_COLOR}; /* Green when ON */
                 color: white;
                 border-radius: 6px; /* Bo góc */
                 font-weight: bold;
-            }}
-            QPushButton#GamingModeButton:hover {{ background-color: {BUTTON_SECONDARY_HOVER}; }}
-            QPushButton#GamingModeButton:checked:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }}
+            }} 
+            QPushButton#GamingModeButton:hover {{ background-color: {BUTTON_SECONDARY_HOVER}; }} 
+            QPushButton#GamingModeButton:checked:hover {{ background-color: {BUTTON_EXPORT_HOVER}; }} 
             /* Quick Actions Styling */
-            QWidget#QuickActionsWidget {{
-                background-color: {STAT_CARD_BG};
-                border-radius: 16px; /* 20px in HTML */
-                padding: 25px; /* 30px in HTML */
-            }}
-            QLabel#QuickActionsTitle {{
-                font-size: {H1_FONT_SIZE + 2}pt; /* 22px in HTML */
-                font-weight: bold; /* 700 */
-                color: {HEADER_TEXT_COLOR};
-                margin-bottom: 15px; /* 20px in HTML */
-            }}
-            QPushButton#ActionBtn {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {GRADIENT_BG_START}, stop:1 {GRADIENT_BG_END});
-                color: white;
-                border: none;
-                padding: 15px 20px; /* 18px 24px in HTML */
-                border-radius: 10px; /* 12px in HTML */
-                font-size: {BODY_FONT_SIZE + 1}pt; /* 16px in HTML */
+            QWidget#QuickActionsWidget {{ 
+                background-color: #ffffff;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 20px;
+            }} 
+            QLabel#QuickActionsTitle {{ 
+                font-size: 16px;
                 font-weight: 600;
-            }}            
-            QPushButton#ActionBtn:hover {{
-                /* transform: translateY(-2px); -> Not directly in QSS */
-                /* box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4); -> Use QGraphicsDropShadowEffect */
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #764ba2, stop:1 #667eea); /* Slightly different gradient on hover */
-            }}
-
-       
+                color: #333;
+                margin-bottom: 10px;
+            }} 
         """) # type: ignore
         # Specific button styles (override general QPushButton style)
         self.button_exit.setStyleSheet(f"""
@@ -1371,13 +1403,12 @@ class PcInfoAppQt(QMainWindow):
                 border-radius: 8px; /* Giữ lại bo góc cho nền */
                 margin-top: 15px; /* Điều chỉnh margin top cho card */
                 padding: 5px 5px 8px 5px;    /* Điều chỉnh padding (top, right, bottom, left) */
-                border-top: none; /* Remove generic top border for InfoCard if specific ones are not used */
-            
+                border-top: none; /* Remove generic top border for InfoCard if specific ones are not used */ /* This rule is for InfoCard, not DashboardStatCard */
             }}
             QGroupBox#ResultsDisplayGroup {{ /* Đã có từ yêu cầu trước, đảm bảo nó không bị ảnh hưởng */
                 border: 5px;
                 margin-top: 5px;
-                padding: 0px;
+                padding: 0px; /* This rule is for ResultsDisplayGroup */
             }}
             QProgressBar, QProgressBar[objectName$="Progress"] {{
                 border: 1px solid {BORDER_COLOR_DARK}; /* Viền nhẹ cho ProgressBar */
@@ -1386,11 +1417,12 @@ class PcInfoAppQt(QMainWindow):
                 background-color: {INPUT_BG}; /* Background of the unfilled part */
             }}
             QProgressBar::chunk {{
-                background-color: {PRIMARY_COLOR}; /* Color of the filled part */
+                background-color: {PRIMARY_COLOR}; /* Default color of the filled part */
                 border-radius: 4px; /* Slightly smaller radius for the chunk */
                 /* width: 10px; */ /* Optional: if you want a segmented look */
             }}
-            QProgressBar#cpuProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b82f6, stop:1 #1d4ed8); }}
+            /* QProgressBar#cpuProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b82f6, stop:1 #1d4ed8); }} */ /* These are now handled by QFrame[cardType] */
+            QProgressBar#ramProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #059669); }}
             QProgressBar#ramProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #059669); }}
             QProgressBar#ssdProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f59e0b, stop:1 #d97706); }}
             QProgressBar#gpuProgress::chunk {{ background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #8b5cf6, stop:1 #7c3aed); }}
@@ -1416,8 +1448,8 @@ class PcInfoAppQt(QMainWindow):
             parent_for_toast = self.page_system_info.findChild(QScrollArea) or self.page_system_info # Find a suitable child or use the tab itself
             target_parent_is_visible = parent_for_toast.isVisible() and self.isVisible()
 
-        # if target_parent_is_visible: # Chỉ hiển thị toast nếu parent dự kiến của nó đang hiển thị
-            # self.toast_notifier.show_toast(message, parent_widget=parent_for_toast, toast_type=status_type)
+        if target_parent_is_visible: # Chỉ hiển thị toast nếu parent dự kiến của nó đang hiển thị
+            self.toast_notifier.show_toast(message, parent_widget=parent_for_toast, toast_type=status_type)
 
 
     def _update_display_widget(self, text_widget, content, is_error=False):
@@ -1514,21 +1546,25 @@ class PcInfoAppQt(QMainWindow):
     def fetch_pc_info_threaded(self):
         # Update placeholder text in cards
         current_page = self.pages_stack.currentWidget()
-        if current_page == self.page_dashboard:
-            self.label_cpu_value.setText("...")
-            self.progress_cpu.setValue(0)
-            self.progress_cpu.setFormat("...")
-            self.label_ram_value.setText("...")
-            self.progress_ram.setValue(0)
-            self.progress_ram.setFormat("...")
-            self.label_ssd_value.setText("...")
-            self.progress_ssd.setValue(0)
-            self.progress_ssd.setFormat("...")
-            self.label_gpu_value.setText("...")
-            self.progress_gpu.setValue(0)
-            self.progress_gpu.setFormat("...")
-            self.health_score_label.setText("🎯 Điểm Sức Khỏe: Đang tính...")
+        if current_page == self.page_dashboard and hasattr(self, 'cpu_card'): # Ensure cards are initialized
+            self.cpu_card.update_value("...")
+            self.cpu_card.update_progress(0) # Reset progress bar
 
+            self.cpu_card.update_details("Đang tải...")
+            self.ram_card.update_value("...")
+            self.ram_card.update_progress(0)
+
+            self.ram_card.update_details("Đang tải...")
+            self.ssd_card.update_value("...")
+            self.ssd_card.update_progress(0)
+
+            self.ssd_card.update_details("Đang tải...")
+            self.gpu_card.update_value("...")
+            self.gpu_card.update_progress(0)
+            self.gpu_card.update_details("Đang tải...")
+            # Reset health score
+            self.health_score_label.setText("🎯 Điểm Sức Khỏe: --/100")
+            self.health_score_label.setToolTip("")
         elif current_page == self.page_system_info:
              # Update placeholder text in cards on System Info tab
             card_widgets = [
@@ -1540,6 +1576,9 @@ class PcInfoAppQt(QMainWindow):
                 content_label = card.findChild(QLabel)
                 if content_label:
                     self._update_display_widget(content_label, html.escape("Đang tải..."))
+        # Dừng timer cập nhật liên tục khi bắt đầu fetch thông tin mới
+        if self.realtime_update_timer.isActive():
+            self.realtime_update_timer.stop()
 
         # Pass the refresh button to the thread
         thread = WorkerThread(get_detailed_system_information, "fetch_pc_info", needs_wmi=False,
@@ -1548,6 +1587,8 @@ class PcInfoAppQt(QMainWindow):
         thread.task_completed.connect(self._on_fetch_pc_info_completed)
         thread.task_error.connect(self._on_task_error)
         self.threads.append(thread)
+        self._update_status_bar("Đang lấy thông tin hệ thống...", "info")
+        
         thread.start()
 
     def _populate_card(self, card_groupbox, data_dict, keys_map):
@@ -1581,151 +1622,71 @@ class PcInfoAppQt(QMainWindow):
             self.pc_info_dict = data
             sys_info_dict = self.pc_info_dict.get("SystemInformation", {})
             pc_data = sys_info_dict.get("PC", {})
-            screen_data = sys_info_dict.get("Màn hình", [])
+            screen_data = sys_info_dict.get("Màn hình", []) # This is a list of dicts
             temps_data = self.pc_info_dict.get("SystemCheckUtilities", {}).get("SystemTemperatures", {})
 
             # Calculate System Health Score
-            health_score_info = calculate_system_health_score(self.pc_info_dict) # Giả định hàm này trả về dict dạng {'score': 85, 'issues': ['...']}
+            health_score_info = calculate_system_health_score(self.pc_info_dict)
 
-
-            # --- Update Dashboard Tab ---
-            if hasattr(self, 'label_cpu_value'): # Check if dashboard elements exist
+            # --- Cập nhật thông tin tĩnh trên Dashboard Tab ---
+            if hasattr(self, 'cpu_card'):
                 # CPU
                 cpu_info = pc_data.get("CPU", {})
                 cpu_model = cpu_info.get("Kiểu máy", NOT_AVAILABLE)
-                cpu_cores = cpu_info.get("Số lõi", "N/A")
-                cpu_threads = cpu_info.get("Số luồng", "N/A")
-                cpu_speed = cpu_info.get("Tốc độ cơ bản", NOT_AVAILABLE)
-                cpu_usage_percent = cpu_info.get("Tải CPU (%)", 0)
-
-                if self._is_value_unavailable(cpu_model) and cpu_usage_percent == 0:
-                    self.label_cpu_value.setText("N/A")
-                    self.progress_cpu.setValue(0)
-                    self.progress_cpu.setFormat("N/A")
-                    self.label_cpu_details.setText(f"N/A<br>N/A Cores, N/A Threads<br>Tốc độ: N/A")
-                elif "Lỗi" in str(cpu_model) or cpu_usage_percent < 0: # Giả sử giá trị âm là lỗi
-                    self.label_cpu_value.setText("Lỗi")
-                    self.progress_cpu.setValue(0)
-                    self.progress_cpu.setFormat("Lỗi")
-                    self.label_cpu_details.setText(f"Lỗi lấy thông tin CPU")
-                else:
-                    self.label_cpu_value.setText(f"{cpu_usage_percent}%")
-                    self.progress_cpu.setValue(cpu_usage_percent)
-                    self.progress_cpu.setFormat("%p%")
-                    self.label_cpu_details.setText(f"{html.escape(str(cpu_model))}<br>{html.escape(str(cpu_cores))} Cores, {html.escape(str(cpu_threads))} Threads<br>Tốc độ: {html.escape(str(cpu_speed))}")
-
+                self.cpu_card.update_details(f"{html.escape(str(cpu_model))}")
+                
                 # RAM
                 ram_info = pc_data.get("RAM", {})
                 ram_total_str = pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE) # Lấy từ cấp PC cho tổng RAM
-                ram_usage_percent = ram_info.get("Phần trăm đã sử dụng", 0)
                 ram_used_gb = ram_info.get("Đã sử dụng (GB)", "N/A")
-                ram_free_gb = ram_info.get("Còn trống (GB)", "N/A")
 
-                if self._is_value_unavailable(ram_total_str) and ram_usage_percent == 0:
-                    self.label_ram_value.setText("N/A")
-                    self.progress_ram.setValue(0)
-                    self.progress_ram.setFormat("N/A")
-                    self.label_ram_details.setText(f"Tổng RAM: N/A<br>Đã sử dụng: N/A GB<br>Còn trống: N/A GB")
-                elif "Lỗi" in str(ram_total_str) or ram_usage_percent < 0:
-                    self.label_ram_value.setText("Lỗi")
-                    self.progress_ram.setValue(0)
-                    self.progress_ram.setFormat("Lỗi")
-                    self.label_ram_details.setText(f"Lỗi lấy thông tin RAM")
-                else:
-                    self.label_ram_value.setText(f"{ram_usage_percent}%")
-                    self.progress_ram.setValue(ram_usage_percent)
-                    self.progress_ram.setFormat("%p%")
-                    self.label_ram_details.setText(f"Tổng RAM: {html.escape(str(ram_total_str))}<br>Đã sử dụng: {html.escape(str(ram_used_gb))} GB<br>Còn trống: {html.escape(str(ram_free_gb))} GB")
+                self.ram_card.update_details(f"Đã dùng: {html.escape(str(ram_used_gb))} GB / {html.escape(str(ram_total_str))}")
 
-                # SSD/Disk (Example: first physical disk, or C: partition if available)
+                # SSD
+                # # SSD/Disk (Example: first physical disk, or C: partition if available)
                 disks_info_list = pc_data.get("Ổ đĩa", [])
-                disk_partitions_usage = self.pc_info_dict.get("SystemCheckUtilities", {}).get("DiskPartitionsUsage", [])
+                disk_partitions_usage = self.pc_info_dict.get("SystemCheckUtilities", {}).get("Dung lượng ổ đĩa", [])
                 os_disk_model = NOT_AVAILABLE
-                os_disk_capacity_gb = "N/A"
-                os_disk_used_gb = "N/A"
-                os_disk_usage_percent = 0
-                ssd_error = False
+                os_disk_capacity_gb = NOT_AVAILABLE
 
                 if disk_partitions_usage and isinstance(disk_partitions_usage, list):
                     for part in disk_partitions_usage:
                         if part.get("Tên ổ đĩa") == "C:":
-                            os_disk_capacity_gb = part.get('Tổng dung lượng (GB)', 'N/A')
-                            os_disk_used_gb = part.get('Đã dùng (GB)', 'N/A')
-                            try:
-                                if not self._is_value_unavailable(os_disk_used_gb) and not self._is_value_unavailable(os_disk_capacity_gb):
-                                    used_gb_float = float(os_disk_used_gb)
-                                    total_gb_float = float(os_disk_capacity_gb)
-                                    if total_gb_float > 0:
-                                        os_disk_usage_percent = int((used_gb_float / total_gb_float) * 100)
-                                else:
-                                    os_disk_usage_percent = 0 # Mark as N/A if components are missing
-                            except ValueError:
-                                ssd_error = True
+                            os_disk_capacity_gb = part.get('Tổng (GB)', NOT_AVAILABLE)
+                            
                             break 
                 if disks_info_list and isinstance(disks_info_list, list) and isinstance(disks_info_list[0], dict):
                     first_disk = disks_info_list[0]
                     os_disk_model = first_disk.get('Kiểu máy', NOT_AVAILABLE)
-                    if self._is_value_unavailable(os_disk_capacity_gb): # If C: partition didn't provide total, use disk total
-                        os_disk_capacity_gb = first_disk.get('Dung lượng (GB)', 'N/A')
-
-                if ssd_error or "Lỗi" in str(os_disk_model):
-                    self.label_ssd_value.setText("Lỗi")
-                    self.progress_ssd.setValue(0)
-                    self.progress_ssd.setFormat("Lỗi")
-                    self.label_ssd_details.setText(f"Lỗi lấy thông tin SSD")
-                elif self._is_value_unavailable(os_disk_model) and os_disk_usage_percent == 0 and self._is_value_unavailable(os_disk_capacity_gb):
-                    self.label_ssd_value.setText("N/A")
-                    self.progress_ssd.setValue(0)
-                    self.progress_ssd.setFormat("N/A")
-                    self.label_ssd_details.setText(f"N/A<br>Dung lượng: N/A GB<br>Đã sử dụng: N/A GB")
-                else:
-                    self.label_ssd_value.setText(f"{os_disk_usage_percent}%")
-                    self.progress_ssd.setValue(os_disk_usage_percent)
-                    self.progress_ssd.setFormat("%p%")
-                    self.label_ssd_details.setText(f"{html.escape(str(os_disk_model))}<br>Dung lượng: {html.escape(str(os_disk_capacity_gb))} GB<br>Đã sử dụng: {html.escape(str(os_disk_used_gb))} GB")
-
+                    # If C: partition data was not found, try to get total capacity from the first disk
+                    if self._is_value_unavailable(os_disk_capacity_gb):
+                        os_disk_capacity_gb = first_disk.get('Dung lượng (GB)', NOT_AVAILABLE)
+                        self.ssd_card.update_details(f"Tổng: {html.escape(str(os_disk_capacity_gb))} GB ({html.escape(str(os_disk_model))})")
                 # GPU
                 gpus = pc_data.get("Card đồ họa (GPU)", [])
                 if gpus and isinstance(gpus, list) and isinstance(gpus[0], dict):
                     first_gpu = gpus[0]
                     gpu_name = first_gpu.get("Tên", NOT_AVAILABLE)
-                    gpu_vram = first_gpu.get("Tổng bộ nhớ (MB)", NOT_AVAILABLE)
-                    gpu_driver = first_gpu.get("Phiên bản Driver", NOT_AVAILABLE)
-                    gpu_load = first_gpu.get("Tải GPU (%)", 0)
-
-                    if "Lỗi" in str(gpu_name) or gpu_load < 0:
-                        self.label_gpu_value.setText("Lỗi")
-                        self.progress_gpu.setValue(0)
-                        self.progress_gpu.setFormat("Lỗi")
-                        self.label_gpu_details.setText(f"Lỗi lấy thông tin GPU")
-                    else:
-                        self.label_gpu_value.setText(f"{gpu_load}%")
-                        self.progress_gpu.setValue(gpu_load)
-                        self.progress_gpu.setFormat("%p%")
-                        self.label_gpu_details.setText(f"{html.escape(str(gpu_name))}<br>VRAM: {html.escape(str(gpu_vram))} MB<br>Driver: {html.escape(str(gpu_driver))}")
-                else: # No GPU found or error in GPU list structure
-                    self.label_gpu_value.setText(f"{gpu_load}%")
-                    self.label_gpu_value.setText("N/A")
-                    self.progress_gpu.setValue(0)
-                    self.progress_gpu.setFormat("N/A")
-                    self.label_gpu_details.setText(f"{NOT_AVAILABLE}<br>VRAM: N/A<br>Driver: N/A")
+                    self.gpu_card.update_details(f"{html.escape(str(gpu_name))}") # Only set the name/model here
+                else:
+                    self.gpu_card.update_details(f"{NOT_AVAILABLE}")
                 # Update System Health Score on Dashboard
                 score_val = health_score_info.get('score', 'N/A')
-                # score_color = ACCENT_COLOR if isinstance(score_val, int) and score_val < 70 else (SECONDARY_COLOR if isinstance(score_val, int) else TEXT_COLOR_SECONDARY)
                 self.health_score_label.setText(f"🎯 Điểm Sức Khỏe: <b>{score_val}</b>/100")
-                # Tooltip for health score can show issues
                 issues_list = health_score_info.get('issues', [])
                 if issues_list:
                     self.health_score_label.setToolTip("Các vấn đề ảnh hưởng điểm:\n- " + "\n- ".join(issues_list))
                 else:
                     self.health_score_label.setToolTip("Không có vấn đề nghiêm trọng nào được phát hiện.")
+                # Bắt đầu timer cập nhật liên tục sau khi thông tin tĩnh đã được tải
+                self._start_realtime_update_timer()
 
             # --- Update System Info Tab (Cards) ---
             if hasattr(self, 'card_general_info'): # Check if system info tab elements exist
                 # Sử dụng QTimer.singleShot để cập nhật từng card một cách trì hoãn
                 QTimer.singleShot(0, lambda d=pc_data: self._populate_card(self.card_general_info, d, [("Tên máy tính", "Tên PC"), ("Loại máy", "Loại Máy"), ("Địa chỉ IP", "IP"), ("Địa chỉ MAC", "MAC")]))
                 QTimer.singleShot(0, lambda d=pc_data: self._populate_card(self.card_os_info, d, [("Hệ điều hành", "HĐH"), ("Phiên bản Windows", "Phiên Bản"), ("Trạng thái kích hoạt Windows", "Kích hoạt")]))
-                QTimer.singleShot(0, lambda d=pc_data.get("CPU", {}): self._populate_card(self.card_cpu_info, d, [("Kiểu máy", "Model"), ("Số lõi", "Lõi"), ("Số luồng", "Luồng"), ("Tốc độ cơ bản", "Tốc độ")]))
+                QTimer.singleShot(0, lambda d=pc_data.get("CPU", {}): self._populate_card(self.card_cpu_info, d, [("Kiểu máy", "Model"), ("Số lõi", "Lõi"), ("Số luồng", "Luồng")])) # Removed "Tốc độ cơ bản" as it's not always available or accurate
                 
                 def update_ram_card_deferred():
                     ram_data_for_card = {"Tổng RAM": pc_data.get("Bộ nhớ RAM", NOT_AVAILABLE)}
@@ -1769,37 +1730,23 @@ class PcInfoAppQt(QMainWindow):
         is_fetch_pc_info = task_name == "fetch_pc_info"
         is_utility_task = task_name.startswith("utility_")
         is_fix_task = task_name.startswith("fix_")
-
+        is_dashboard_task = task_name.startswith("dashboard_")
         if is_fetch_pc_info:
+            # Dừng timer cập nhật liên tục khi có lỗi fetch thông tin chính
+            if self.realtime_update_timer.isActive():
+                self.realtime_update_timer.stop()
             self.pc_info_dict = None
             error_text_html = html.escape(f"Lỗi: {error_message}").replace("\n", "<br>")
-            if hasattr(self, 'label_cpu_value'): # Dashboard elements
-                self.label_cpu_value.setText("Lỗi")
-                self.progress_cpu.setValue(0)
-                self.progress_cpu.setFormat("Lỗi")
-                self.label_cpu_details.setText("Lỗi lấy thông tin CPU")
-
-                self.label_ram_value.setText("Lỗi")
-                self.progress_ram.setValue(0)
-                self.progress_ram.setFormat("Lỗi")
-                self.label_ram_details.setText("Lỗi lấy thông tin RAM")
-
-                self.label_ssd_value.setText("Lỗi")
-                self.progress_ssd.setValue(0)
-                self.progress_ssd.setFormat("Lỗi")
-                self.label_ssd_details.setText("Lỗi lấy thông tin SSD")
-
-                self.label_gpu_value.setText("Lỗi")
-                self.progress_gpu.setValue(0)
-                self.progress_gpu.setFormat("Lỗi")
-                self.label_gpu_details.setText("Lỗi lấy thông tin GPU")
+            if hasattr(self, 'cpu_card'): # Dashboard elements
+                self.cpu_card.update_value("Lỗi")
+                self.cpu_card.update_progress(0)
+                self.cpu_card.update_details("Lỗi lấy thông tin CPU")
                 # ... (tương tự cho RAM, SSD, GPU)
                 self.health_score_label.setText("🎯 Điểm Sức Khỏe: Lỗi")
-
             if hasattr(self, 'card_general_info'): # System Info tab elements
                 card_widgets = [
                     self.card_general_info, self.card_os_info, self.card_cpu_info, 
-                    self.card_ram_info, self.card_mainboard_info, self.card_disks_info, 
+                    self.card_ram_info, self.card_mainboard_info, self.card_disks_info,
                     self.card_gpus_info, self.card_screens_info
                 ]
                 for card in card_widgets:
@@ -1809,7 +1756,7 @@ class PcInfoAppQt(QMainWindow):
             self._update_status_bar(f"Lỗi lấy thông tin PC: {error_message[:100]}...", "error") # Thêm dòng này
             if self.pages_stack.currentWidget() == self.page_report_settings:
                 self.button_save_active_tab_result.setEnabled(False)
-        elif is_utility_task or is_fix_task: # Gộp logic lỗi cho các tab tiện ích/fix
+        elif is_utility_task or is_fix_task or is_dashboard_task: # Gộp logic lỗi cho các tab tiện ích/fix/dashboard quick actions
             target_stacked_widget = None
             if task_name.startswith("security_") and hasattr(self, 'stacked_widget_results_security'):
                 target_stacked_widget = self.stacked_widget_results_security
@@ -1819,12 +1766,16 @@ class PcInfoAppQt(QMainWindow):
                 target_stacked_widget = self.stacked_widget_results_network
             elif task_name.startswith("update_") and hasattr(self, 'stacked_widget_results_update_center'):
                 target_stacked_widget = self.stacked_widget_results_update_center
+            elif is_dashboard_task: # For quick actions on dashboard, show toast only
+                self._update_status_bar(f"Lỗi tác vụ nhanh: {error_message[:100]}...", "error")
+                return # Don't try to update a stacked widget
             
             # Add other task prefixes and their corresponding stacked_widgets here
 
             if target_stacked_widget:
                 target_stacked_widget.setCurrentIndex(0) # Show QTextEdit for errors
                 text_edit_target = target_stacked_widget.widget(0).findChild(QTextEdit)
+                # Ensure the text_edit_target is actually a QTextEdit before calling _update_display_widget
                 if text_edit_target:
                     self._update_display_widget(text_edit_target, html.escape(f"Lỗi khi thực hiện tác vụ:\n{error_message}").replace("\n", "<br>"), is_error=True)
                 self._update_save_button_state_for_tab_content(target_stacked_widget)
@@ -2183,13 +2134,13 @@ class PcInfoAppQt(QMainWindow):
         domain_name, ok = QInputDialog.getText(self, "Phân giải IP tên miền", "Nhập tên miền (ví dụ: google.com):")
         
         if ok and domain_name.strip():
-            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_utilities, 
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_network, 
                                         lookup_dns_address, "utility_resolve_domain_ip", # This task_name_prefix needs to match the tab
                                         needs_wmi=False, task_args=[domain_name.strip()])
         elif ok: # Người dùng nhấn OK nhưng không nhập gì
             QMessageBox.warning(self, "Đầu vào trống", "Bạn chưa nhập tên miền.")
 
-    def run_set_dns_config_qt(self, button_clicked):
+    def run_set_dns_config_qt(self, button_clicked): # Added button_clicked
         """Mở hộp thoại cấu hình DNS và thực thi."""
         dialog = SetDnsDialog(self)
         if dialog.exec_() == QDialog.Accepted:
@@ -2204,8 +2155,7 @@ class PcInfoAppQt(QMainWindow):
             if not re.match(ip_pattern, primary_dns) or (secondary_dns and not re.match(ip_pattern, secondary_dns)):
                 QMessageBox.warning(self, "Định dạng IP không hợp lệ", "Vui lòng nhập địa chỉ DNS đúng định dạng IP (ví dụ: 8.8.8.8).")
                 return
-            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_utilities, set_dns_servers, "utility_set_dns", needs_wmi=True, task_args=[primary_dns, secondary_dns]) # This task_name_prefix needs to match the tab
-
+            self._run_task_in_thread_qt(button_clicked, self.stacked_widget_results_network, set_dns_servers, "network_set_dns", needs_wmi=True, task_args=[primary_dns, secondary_dns])
     def closeEvent(self, event): # type: ignore
         # Dọn dẹp luồng khi đóng ứng dụng
         active_threads = [t for t in self.threads if t.isRunning()]
@@ -2571,29 +2521,95 @@ class PcInfoAppQt(QMainWindow):
 
     # --- Dashboard Quick Action Handlers ---
     def on_dashboard_cleanup_system_clicked(self):
-        self._run_task_in_thread_qt(self.btn_cleanup_system, 
-                                    target_stacked_widget=None, # No specific tab display for quick action
+        # "Dọn Dẹp Hệ Thống" sẽ gọi hàm clear_temporary_files
+        self._run_task_in_thread_qt(self.sender(),
+                                    target_stacked_widget=self.stacked_widget_results_optimize, # Hiển thị kết quả trên tab Tối Ưu
                                     task_function=clear_temporary_files, 
                                     task_name_prefix="dashboard_cleanup", 
                                     needs_wmi=False)
+    
+    def on_copy_specs_clicked(self):
+        # Placeholder for copy functionality
+        QMessageBox.information(self, "Thông báo", "Chức năng 'Copy' thông số kỹ thuật đang được phát triển. (Dữ liệu sẽ được copy vào clipboard)")
+        self._update_status_bar("Chức năng Copy đang phát triển", "info")
 
     def on_dashboard_boost_pc_clicked(self):
-        # For now, this is a placeholder. A real "boost" might involve multiple actions.
-        QMessageBox.information(self, "Đang phát triển", "Chức năng 'Tăng Tốc PC' đang được phát triển và sẽ sớm có mặt!")
-        self._update_status_bar("Tăng Tốc PC (Đang phát triển)", "info")
-
+        # "Tăng Tốc PC" sẽ kích hoạt Power Plan 'High Performance'
+        self._run_task_in_thread_qt(self.sender(),
+                                    target_stacked_widget=self.stacked_widget_results_optimize, # Hiển thị kết quả trên tab Tối Ưu
+                                    task_function=set_high_performance_power_plan, 
+                                    task_name_prefix="dashboard_boost_pc", 
+                                    needs_wmi=False)
     def on_dashboard_security_scan_clicked(self):
-        self._run_task_in_thread_qt(self.btn_security_scan, 
-                                    target_stacked_widget=None, 
+        # "Quét Bảo Mật" sẽ gọi hàm run_windows_defender_scan (QuickScan)
+        self._run_task_in_thread_qt(self.sender(),
+                                    target_stacked_widget=self.stacked_widget_results_security, # Hiển thị kết quả trên tab Bảo Mật
                                     task_function=run_windows_defender_scan, 
                                     task_name_prefix="dashboard_security_scan", 
                                     needs_wmi=False, task_args=["QuickScan"])
 
     def on_dashboard_update_drivers_clicked(self):
-        QMessageBox.information(self, "Đang phát triển", "Chức năng 'Cập Nhật Driver' đang được phát triển và sẽ sớm có mặt!")
-        self._update_status_bar("Cập Nhật Driver (Đang phát triển)", "info")
-
+        # "Cập Nhật Driver" sẽ mở trang Windows Update
+        try:
+            import webbrowser
+            webbrowser.open("ms-settings:windowsupdate")
+            # Cập nhật status bar và hiển thị toast thành công
+            self._update_status_bar("Đã mở cài đặt Windows Update để kiểm tra driver.", "success")
+            self.toast_notifier.show_toast("Đã mở cài đặt Windows Update để kiểm tra driver.", parent_widget=self, toast_type='success')
+        except Exception as e:
+            logging.error(f"Không thể mở cài đặt Windows Update: {e}")
+            QMessageBox.warning(self, "Lỗi", f"Không thể mở cài đặt Windows Update tự động.\nVui lòng mở thủ công: Settings > Update & Security > Windows Update.\nLỗi: {e}")
+            # Cập nhật status bar và hiển thị toast lỗi
+            self._update_status_bar(f"Lỗi: Không thể mở cài đặt Windows Update tự động.", "error")
+            self.toast_notifier.show_toast(f"Lỗi: Không thể mở cài đặt Windows Update tự động.", parent_widget=self, toast_type='error')
         # Nếu nhấn Cancel (ok=False), không làm gì cả
+    def _start_realtime_update_timer(self):
+        """Bắt đầu timer để cập nhật phần trăm sử dụng CPU, RAM, SSD, GPU liên tục."""
+        # Đảm bảo timer không chạy nếu đã chạy
+        if not self.realtime_update_timer.isActive():
+            self.realtime_update_timer.start(2000) # Cập nhật mỗi 2 giây
+            logging.info("Timer cập nhật phần trăm sử dụng thời gian thực đã bắt đầu.")
+
+    def _update_realtime_usage(self):
+        """Lấy và cập nhật phần trăm sử dụng CPU, RAM, SSD, GPU."""
+        try:
+            # CPU Usage
+            cpu_percent = psutil.cpu_percent(interval=None) # Non-blocking call
+            self.cpu_card.update_value(f"{int(cpu_percent)}%")
+            self.cpu_card.update_progress(int(cpu_percent))
+
+            # RAM Usage
+            ram_info = psutil.virtual_memory()
+            ram_percent = ram_info.percent
+            self.ram_card.update_value(f"{int(ram_percent)}%")
+            self.ram_card.update_progress(int(ram_percent))
+
+            # SSD Usage (for C: drive)
+            # psutil.disk_usage('/') is for the root partition, which is C: on Windows
+            disk_info = psutil.disk_usage('/')
+            disk_percent = disk_info.percent
+            self.ssd_card.update_value(f"{int(disk_percent)}%")
+            self.ssd_card.update_progress(int(disk_percent))
+            
+            # GPU Usage (Real-time)
+            gpu_realtime_data = get_gpu_realtime_usage()
+            if gpu_realtime_data:
+                gpu_load = gpu_realtime_data.get('load_percent', 0)
+                mem_used = gpu_realtime_data.get('memory_used_mb', 0)
+                mem_total = gpu_realtime_data.get('memory_total_mb', 0)
+                
+                self.gpu_card.update_value(f"{int(gpu_load)}%")
+                self.gpu_card.update_progress(int(gpu_load))
+                self.gpu_card.update_details(f"VRAM: {mem_used} MB / {mem_total} MB")
+            else:
+                # Fallback if real-time data is not available (e.g., non-NVIDIA GPU or pynvml not installed)
+                self.gpu_card.update_value("N/A")
+                self.gpu_card.update_progress(0)
+
+        except Exception as e:
+            logging.error(f"Lỗi khi cập nhật phần trăm sử dụng thời gian thực: {e}")
+            # Dừng timer nếu có lỗi nghiêm trọng để tránh spam lỗi
+            self.realtime_update_timer.stop()
 
 
 

@@ -8,8 +8,8 @@ H2_FONT_SIZE = 12
 BODY_FONT_SIZE = 10
 MONOSPACE_FONT_SIZE = 9
 
-APP_VERSION = "2.1.0" # Cập nhật phiên bản
-APP_AUTHOR = "VIETNAM"
+APP_VERSION = "2.1.1" # Cập nhật phiên bản
+APP_AUTHOR = "VKhoối"
 APP_CONTACT_EMAIL = "vankhoai690@gmail.com"
 
 # --- Color Palette (Lấy cảm hứng từ Tailwind CSS và các theme hiện đại) ---
