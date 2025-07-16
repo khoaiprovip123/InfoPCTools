@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PCInfoApp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1bf6064b6886354792a8ba2f94174ab92ec0b33a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c17e3bbf41e08b5aeeea4295149b3e4d54eb69da")]
 [assembly: System.Reflection.AssemblyProductAttribute("PCInfoApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PCInfoApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

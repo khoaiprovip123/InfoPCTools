@@ -220,7 +220,7 @@ namespace PCInfoApp {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/PCInfoApp;component/systeminfoview.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/PCInfoApp;V1.0.0.0;component/systeminfoview.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\SystemInfoView.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

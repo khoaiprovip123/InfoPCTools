@@ -51,7 +51,7 @@ namespace PCInfoApp {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/PCInfoApp;component/reportingview.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/PCInfoApp;V1.0.0.0;component/reportingview.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\ReportingView.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

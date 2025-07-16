@@ -51,7 +51,7 @@ namespace PCInfoApp {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/PCInfoApp;component/performancetuningview.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/PCInfoApp;V1.0.0.0;component/performancetuningview.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\PerformanceTuningView.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

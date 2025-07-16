@@ -51,7 +51,7 @@ namespace PCInfoApp {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/PCInfoApp;component/finalpolishview.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/PCInfoApp;V1.0.0.0;component/finalpolishview.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\FinalPolishView.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);
