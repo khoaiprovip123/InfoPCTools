@@ -1,0 +1,34 @@
+<UserControl x:Class="PCInfoApp.AIIntegrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Tích hợp AI" Style="{StaticResource H2Style}" Margin="0,0,0,15"/>
+
+            <Border Grid.Row="1" Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Nhận dạng mẫu:" Style="{StaticResource CardHeaderStyle}"/>
+                    <TextBlock Text="Tính năng này yêu cầu các mô hình học máy tiên tiến và phân tích dữ liệu lịch sử." Style="{StaticResource InfoTextStyle}"/>
+
+                    <TextBlock Text="Phát hiện bất thường hiệu suất:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <TextBlock Text="Tính năng này yêu cầu phân tích thống kê hoặc các mô hình học máy để xác định hành vi bất thường." Style="{StaticResource InfoTextStyle}"/>
+
+                    <TextBlock Text="Bảo trì dự đoán:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <TextBlock Text="Tính năng này yêu cầu các mô hình phức tạp dựa trên dữ liệu cảm biến phần cứng và các mẫu lỗi." Style="{StaticResource InfoTextStyle}"/>
+
+                    <TextBlock Text="Dự báo sử dụng tài nguyên:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <TextBlock Text="Tính năng này yêu cầu các mô hình dự báo chuỗi thời gian." Style="{StaticResource InfoTextStyle}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

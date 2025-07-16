@@ -1,0 +1,321 @@
+<UserControl x:Class="PCInfoApp.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:PCInfoApp"
+             xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Grid Margin="5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Tổng quan Bảng điều khiển" Style="{StaticResource H2Style}" Margin="0,0,0,10"/>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Điểm sức khỏe hệ thống -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Điểm sức khỏe hệ thống" Style="{StaticResource CardHeaderStyle}"/>
+                    <TextBlock Style="{StaticResource H1Style}" Foreground="{StaticResource SuccessGreen}" Margin="0,2,0,0"><Run Text="85/100 (Tốt)"/><Run Text=" ⭐"/></TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Chỉ số thời gian thực -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Chỉ số thời gian thực" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/system.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                                <TextBlock Text="Sử dụng CPU" Style="{StaticResource InfoTextStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="25%" Style="{StaticResource H2Style}" Foreground="{StaticResource PrimaryBlue}"/>
+                            <ProgressBar Style="{StaticResource MetricProgressBarStyle}" Value="25" Foreground="{StaticResource PrimaryBlue}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/efficiency.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                                <TextBlock Text="Sử dụng RAM" Style="{StaticResource InfoTextStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="40%" Style="{StaticResource H2Style}" Foreground="{StaticResource PrimaryBlue}"/>
+                            <ProgressBar Style="{StaticResource MetricProgressBarStyle}" Value="40" Foreground="{StaticResource PrimaryBlue}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/optimize.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                                <TextBlock Text="Sử dụng Đĩa" Style="{StaticResource InfoTextStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="60%" Style="{StaticResource H2Style}" Foreground="{StaticResource WarningOrange}"/>
+                            <ProgressBar Style="{StaticResource MetricProgressBarStyle}" Value="60" Foreground="{StaticResource WarningOrange}"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Giám sát nhiệt độ -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Giám sát nhiệt độ" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/system.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                                <TextBlock Text="Nhiệt độ CPU" Style="{StaticResource InfoTextStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="55°C" Style="{StaticResource H2Style}" Foreground="{StaticResource PrimaryBlue}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/optimize.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                                <TextBlock Text="Nhiệt độ GPU" Style="{StaticResource InfoTextStyle}"/>
+                            </StackPanel>
+                            <TextBlock Text="60°C" Style="{StaticResource H2Style}" Foreground="{StaticResource WarningOrangeSoft}"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Hành động nhanh -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Hành động nhanh" Style="{StaticResource CardHeaderStyle}"/>
+                    <WrapPanel Orientation="Horizontal" Margin="0,2,0,0">
+                        <Button Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/system_fix.png" Width="20" Height="20" Margin="0,0,5,0"/>
+                                <TextBlock Text="Chạy quét"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SuccessColoredButtonStyle}" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/optimize.png" Width="20" Height="20" Margin="0,0,5,0"/>
+                                <TextBlock Text="Tối ưu hóa ngay"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource WarningColoredButtonStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="/assets/icons/utilities.png" Width="20" Height="20" Margin="0,0,5,0"/>
+                                <TextBlock Text="Dọn dẹp"/>
+                            </StackPanel>
+                        </Button>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Biểu đồ hiệu suất -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Biểu đồ hiệu suất" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="5">
+                            <TextBlock Text="CPU Usage" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="CpuChart" Height="150" ToolTip="Hiển thị mức sử dụng CPU theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="CPU" Values="{Binding CpuValues}" Fill="{Binding CpuUsageColor}" Stroke="{Binding CpuUsageColor}" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Usage %" LabelFormatter="{Binding Formatter}" MinValue="0" MaxValue="100"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="5">
+                            <TextBlock Text="RAM Usage" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="RamChart" Height="150" ToolTip="Hiển thị mức sử dụng RAM theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="RAM" Values="{Binding RamValues}" Fill="{Binding RamUsageColor}" Stroke="{Binding RamUsageColor}" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Usage %" LabelFormatter="{Binding Formatter}" MinValue="0" MaxValue="100"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="5">
+                            <TextBlock Text="Disk Usage" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="DiskChart" Height="150" ToolTip="Hiển thị mức sử dụng Đĩa theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="Disk" Values="{Binding DiskValues}" Fill="{Binding DiskUsageColor}" Stroke="{Binding DiskUsageColor}" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Usage %" LabelFormatter="{Binding Formatter}" MinValue="0" MaxValue="100"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Biểu đồ nhiệt độ -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Biểu đồ nhiệt độ" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="5">
+                            <TextBlock Text="CPU Temperature" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="CpuTempChart" Height="150" ToolTip="Hiển thị nhiệt độ CPU theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="CPU Temp" Values="{Binding CpuTempValues}" Fill="{Binding CpuTempColor}" Stroke="{Binding CpuTempColor}" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Temperature °C" LabelFormatter="{Binding TempFormatter}" MinValue="0" MaxValue="100"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="5">
+                            <TextBlock Text="GPU Temperature" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="GpuTempChart" Height="150" ToolTip="Hiển thị nhiệt độ GPU theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="GPU Temp" Values="{Binding GpuTempValues}" Fill="{Binding GpuTempColor}" Stroke="{Binding GpuTempColor}" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Temperature °C" LabelFormatter="{Binding TempFormatter}" MinValue="0" MaxValue="100"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Biểu đồ mạng -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Biểu đồ mạng" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="5">
+                            <TextBlock Text="Tốc độ tải lên" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="UploadChart" Height="150" ToolTip="Hiển thị tốc độ tải lên theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="Upload" Values="{Binding UploadValues}" Fill="#2563EB" Stroke="#2563EB" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Speed (KB/s)" LabelFormatter="{Binding NetworkFormatter}" MinValue="0"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="5">
+                            <TextBlock Text="Tốc độ tải xuống" Style="{StaticResource SmallTextStyle}"/>
+                            <lvc:CartesianChart x:Name="DownloadChart" Height="150" ToolTip="Hiển thị tốc độ tải xuống theo thời gian.">
+                                <lvc:CartesianChart.Series>
+                                    <lvc:LineSeries Title="Download" Values="{Binding DownloadValues}" Fill="#10B981" Stroke="#10B981" PointGeometrySize="0" LineSmoothness="1"/>
+                                </lvc:CartesianChart.Series>
+                                <lvc:CartesianChart.AxisY>
+                                    <lvc:Axis Title="Speed (KB/s)" LabelFormatter="{Binding NetworkFormatter}" MinValue="0"/>
+                                </lvc:CartesianChart.AxisY>
+                                <lvc:CartesianChart.AxisX>
+                                    <lvc:Axis Labels="{Binding Labels}"/>
+                                </lvc:CartesianChart.AxisX>
+                            </lvc:CartesianChart>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Cảnh báo sức khỏe hệ thống -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Cảnh báo sức khỏe hệ thống" Style="{StaticResource CardHeaderStyle}"/>
+                    <TextBlock Text="Dự đoán lỗi phần cứng: Không có lỗi nào được phát hiện." Style="{StaticResource InfoTextStyle}"/>
+                    <TextBlock Text="Thông báo cập nhật trình điều khiển: Không có cập nhật nào." Style="{StaticResource InfoTextStyle}"/>
+                    <TextBlock Text="Cảnh báo lỗ hổng bảo mật: Hệ thống an toàn." Style="{StaticResource InfoTextStyle}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Cấu hình ngưỡng cảnh báo -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Cấu hình ngưỡng cảnh báo" Style="{StaticResource CardHeaderStyle}"/>
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Ngưỡng CPU (%):" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center"/>
+                        <Slider Grid.Row="0" Grid.Column="1" x:Name="CpuThresholdSlider" Minimum="0" Maximum="100" Value="{Binding CpuUsageThreshold}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="10,0,10,0"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding ElementName=CpuThresholdSlider, Path=Value, StringFormat={}{0:N0}%}" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Ngưỡng RAM (%):" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                        <Slider Grid.Row="1" Grid.Column="1" x:Name="RamThresholdSlider" Minimum="0" Maximum="100" Value="{Binding RamUsageThreshold}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="10,10,10,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding ElementName=RamThresholdSlider, Path=Value, StringFormat={}{0:N0}%}" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Ngưỡng Đĩa (%):" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                        <Slider Grid.Row="2" Grid.Column="1" x:Name="DiskThresholdSlider" Minimum="0" Maximum="100" Value="{Binding DiskUsageThreshold}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="10,10,10,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding ElementName=DiskThresholdSlider, Path=Value, StringFormat={}{0:N0}%}" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Ngưỡng Nhiệt độ CPU (°C):" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                        <Slider Grid.Row="3" Grid.Column="1" x:Name="CpuTempThresholdSlider" Minimum="0" Maximum="100" Value="{Binding CpuTempThreshold}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="10,10,10,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding ElementName=CpuTempThresholdSlider, Path=Value, StringFormat={}{0:N0}°C}" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Ngưỡng Nhiệt độ GPU (°C):" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                        <Slider Grid.Row="4" Grid.Column="1" x:Name="GpuTempThresholdSlider" Minimum="0" Maximum="100" Value="{Binding GpuTempThreshold}" IsSnapToTickEnabled="True" TickFrequency="5" Margin="10,10,10,0"/>
+                        <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding ElementName=GpuTempThresholdSlider, Path=Value, StringFormat={}{0:N0}°C}" Style="{StaticResource InfoTextStyle}" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Lịch sử hiệu suất -->
+            <Border Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Lịch sử hiệu suất" Style="{StaticResource CardHeaderStyle}"/>
+                    <TextBlock Text="Tính năng này sẽ hiển thị dữ liệu hiệu suất lịch sử và xu hướng." Style="{StaticResource InfoTextStyle}"/>
+                    <Button Content="Xem lịch sử hiệu suất" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

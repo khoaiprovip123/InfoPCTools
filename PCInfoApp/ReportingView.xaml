@@ -1,0 +1,38 @@
+<UserControl x:Class="PCInfoApp.ReportingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Báo cáo &amp; Xuất" Style="{StaticResource H2Style}" Margin="0,0,0,15"/>
+
+            <Border Grid.Row="1" Style="{StaticResource InfoCardStyle}">
+                <StackPanel>
+                    <TextBlock Text="Tạo báo cáo:" Style="{StaticResource CardHeaderStyle}"/>
+                    <Button Content="Tạo báo cáo sức khỏe hệ thống" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="GenerateSystemHealthReport_Click"/>
+                    <Button Content="Tạo báo cáo phân tích hiệu suất" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="GeneratePerformanceAnalysisReport_Click"/>
+                    <Button Content="Tạo báo cáo kiểm kê phần cứng" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="GenerateHardwareInventoryReport_Click"/>
+                    <Button Content="Tạo báo cáo đề xuất bảo trì" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="GenerateMaintenanceRecommendationsReport_Click"/>
+
+                    <TextBlock Text="Tùy chọn xuất:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <Button Content="Xuất sang PDF" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="ExportToPdf_Click"/>
+                    <Button Content="Xuất sang Excel/CSV" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="ExportToExcelCsv_Click"/>
+
+                    <TextBlock Text="Tạo báo cáo theo lịch trình:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <Button Content="Thiết lập lịch trình báo cáo" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="ScheduleReportGeneration_Click"/>
+
+                    <TextBlock Text="Gửi báo cáo qua email:" Style="{StaticResource CardHeaderStyle}" Margin="0,20,0,0"/>
+                    <Button Content="Thiết lập gửi báo cáo qua email" Style="{StaticResource PrimaryColoredButtonStyle}" Margin="0,10,0,0" Click="SetupEmailDelivery_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

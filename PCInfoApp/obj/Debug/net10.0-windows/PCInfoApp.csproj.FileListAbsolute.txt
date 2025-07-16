@@ -1,0 +1,4 @@
+D:\PCINFO\InfoPCTools\PCInfoApp\obj\Debug\net10.0-windows\MainWindow.g.cs
+D:\PCINFO\InfoPCTools\PCInfoApp\obj\Debug\net10.0-windows\App.g.cs
+D:\PCINFO\InfoPCTools\PCInfoApp\obj\Debug\net10.0-windows\PCInfoApp_MarkupCompile.cache
+D:\PCINFO\InfoPCTools\PCInfoApp\obj\Debug\net10.0-windows\PCInfoApp_MarkupCompile.lref
