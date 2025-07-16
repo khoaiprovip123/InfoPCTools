@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "y1lvsQqKsh4=",
+  "success": true,
+  "projectFilePath": "D:\\PCINFO\\InfoPCTools\\src\\Application\\InfoPCTools.Application.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\vankh\\.nuget\\packages\\serilog\\4.3.0\\serilog.4.3.0.nupkg.sha512"
+  ],
+  "logs": []
+}

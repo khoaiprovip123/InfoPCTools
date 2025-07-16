@@ -1,0 +1,16 @@
+D:\PCINFO\InfoPCTools\src\Application\bin\Debug\net8.0\InfoPCTools.Application.deps.json
+D:\PCINFO\InfoPCTools\src\Application\bin\Debug\net8.0\InfoPCTools.Application.dll
+D:\PCINFO\InfoPCTools\src\Application\bin\Debug\net8.0\InfoPCTools.Application.pdb
+D:\PCINFO\InfoPCTools\src\Application\bin\Debug\net8.0\InfoPCTools.Domain.dll
+D:\PCINFO\InfoPCTools\src\Application\bin\Debug\net8.0\InfoPCTools.Domain.pdb
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.csproj.AssemblyReference.cache
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.GeneratedMSBuildEditorConfig.editorconfig
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.AssemblyInfoInputs.cache
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.AssemblyInfo.cs
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.csproj.CoreCompileInputs.cache
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.sourcelink.json
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTo.DF9427B3.Up2Date
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.dll
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\refint\InfoPCTools.Application.dll
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\InfoPCTools.Application.pdb
+D:\PCINFO\InfoPCTools\src\Application\obj\Debug\net8.0\ref\InfoPCTools.Application.dll

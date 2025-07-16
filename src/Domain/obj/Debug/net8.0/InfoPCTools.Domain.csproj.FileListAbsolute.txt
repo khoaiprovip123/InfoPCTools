@@ -1,0 +1,12 @@
+D:\PCINFO\InfoPCTools\src\Domain\bin\Debug\net8.0\InfoPCTools.Domain.deps.json
+D:\PCINFO\InfoPCTools\src\Domain\bin\Debug\net8.0\InfoPCTools.Domain.dll
+D:\PCINFO\InfoPCTools\src\Domain\bin\Debug\net8.0\InfoPCTools.Domain.pdb
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.AssemblyInfoInputs.cache
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.AssemblyInfo.cs
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.csproj.CoreCompileInputs.cache
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.sourcelink.json
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.dll
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\refint\InfoPCTools.Domain.dll
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\InfoPCTools.Domain.pdb
+D:\PCINFO\InfoPCTools\src\Domain\obj\Debug\net8.0\ref\InfoPCTools.Domain.dll
