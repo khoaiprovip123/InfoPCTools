@@ -1,4 +1,4 @@
-Đề xuất cải tiến
+# Đề xuất cải tiến
 1. Cải thiện hiển thị dữ liệu:
 
 Thêm dữ liệu thực cho các biểu đồ
