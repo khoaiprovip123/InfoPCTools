@@ -1,1 +1,0 @@
-dotnet build InfoPCTools.sln --configuration Release
