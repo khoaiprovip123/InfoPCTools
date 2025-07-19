@@ -51,6 +51,7 @@ class SystemMonitorApp(ctk.CTk):
         self.show_dashboard()
         self.active_after_ids = {}
         self.current_qr_image = None # To store the PIL Image for QR export
+        self.processes_labels = [] # To store labels for dynamic updates
 
     def show_frame(self, name):
         # Cancel any pending 'after' calls
@@ -401,12 +402,13 @@ class SystemMonitorApp(ctk.CTk):
         for widget in applications_frame.winfo_children():
             widget.destroy()
 
+        ctk.CTkLabel(applications_frame, text=localization.get_text("Applications"), font=("Arial", 24, "bold")).pack(pady=10)
+
         tab_view = ctk.CTkTabview(applications_frame)
         tab_view.pack(fill="both", expand=True, padx=10, pady=10)
 
         installed_tab = tab_view.add(localization.get_text("Installed Apps"))
         startup_tab = tab_view.add(localization.get_text("Startup Apps"))
-
         # --- Installed Apps Tab ---
         installed_frame = ctk.CTkScrollableFrame(installed_tab)
         installed_frame.pack(fill="both", expand=True)
@@ -461,6 +463,49 @@ class SystemMonitorApp(ctk.CTk):
             else:
                 switch.deselect()
             row_index += 1
+
+        
+
+    def update_processes_display(self, parent_frame):
+        # Clear existing process labels
+        for label in self.processes_labels:
+            label.destroy()
+        self.processes_labels.clear()
+
+        # Get and display current processes
+        processes = logic.get_running_processes()
+        if processes:
+            # Create header row
+            header_font = ("Arial", 12, "bold")
+            
+            header_frame = ctk.CTkFrame(parent_frame, fg_color="transparent")
+            header_frame.pack(fill="x", pady=(5, 0))
+
+            ctk.CTkLabel(header_frame, text=localization.get_text("Process Name"), font=header_font).pack(side="left", padx=5, pady=5, expand=True, fill="x")
+            ctk.CTkLabel(header_frame, text=localization.get_text("PID"), font=header_font).pack(side="left", padx=5, pady=5, expand=True, fill="x")
+            ctk.CTkLabel(header_frame, text=localization.get_text("CPU"), font=header_font).pack(side="left", padx=5, pady=5, expand=True, fill="x")
+            ctk.CTkLabel(header_frame, text=localization.get_text("Memory"), font=header_font).pack(side="left", padx=5, pady=5, expand=True, fill="x")
+
+            for p in processes:
+                process_row_frame = ctk.CTkFrame(parent_frame, fg_color="transparent")
+                process_row_frame.pack(fill="x", pady=2)
+
+                name_label = ctk.CTkLabel(process_row_frame, text=p["name"], wraplength=200, justify="left")
+                name_label.pack(side="left", padx=5, pady=2, expand=True, fill="x")
+                pid_label = ctk.CTkLabel(process_row_frame, text=str(p["pid"]))
+                pid_label.pack(side="left", padx=5, pady=2, expand=True, fill="x")
+                cpu_label = ctk.CTkLabel(process_row_frame, text=f"{p["cpu_percent"]:.1f}%")
+                cpu_label.pack(side="left", padx=5, pady=2, expand=True, fill="x")
+                mem_label = ctk.CTkLabel(process_row_frame, text=f"{p["memory_percent"]:.1f}%")
+                mem_label.pack(side="left", padx=5, pady=2, expand=True, fill="x")
+
+                self.processes_labels.extend([name_label, pid_label, cpu_label, mem_label])
+        else:
+            no_processes_label = ctk.CTkLabel(parent_frame, text=localization.get_text("No running processes found."))
+            no_processes_label.pack(pady=20)
+            self.processes_labels.append(no_processes_label)
+
+        self.active_after_ids["processes_update"] = self.after(3000, lambda: self.update_processes_display(parent_frame))
 
     def _toggle_startup_app(self, app_info, state):
         print(f"_toggle_startup_app called with: {app_info['name']}, state: {state}") # Debug print
@@ -618,3 +663,7 @@ class SystemMonitorApp(ctk.CTk):
                 self.show_repair_restore()
             elif current_frame_name == "Settings":
                 self.show_settings()
+            # If the current frame is Applications, ensure processes are updated
+            if current_frame_name == "Applications":
+                # Re-initialize the processes tab to ensure it updates correctly
+                self.show_applications()

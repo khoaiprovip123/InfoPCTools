@@ -72,7 +72,13 @@ all_translations = {
         # Applications
         "Installed Apps": "Installed Apps",
         "Startup Apps": "Startup Apps",
+        "Processes": "Processes",
         "Uninstall": "Uninstall",
+        "Process Name": "Process Name",
+        "PID": "PID",
+        "CPU": "CPU",
+        "Memory": "Memory",
+        "No running processes found.": "No running processes found.",
 
         # Security
         "Firewall Status": "Firewall Status",
@@ -191,7 +197,13 @@ all_translations = {
 
         "Installed Apps": "Ứng dụng đã cài đặt",
         "Startup Apps": "Ứng dụng khởi động",
+        "Processes": "Tiến trình",
         "Uninstall": "Gỡ cài đặt",
+        "Process Name": "Tên tiến trình",
+        "PID": "PID",
+        "CPU": "CPU",
+        "Memory": "Bộ nhớ",
+        "No running processes found.": "Không tìm thấy tiến trình nào đang chạy.",
 
         # Security
         "Firewall Status": "Trạng thái Tường lửa",

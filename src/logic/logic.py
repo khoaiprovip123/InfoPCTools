@@ -396,3 +396,18 @@ def generate_qr_code_for_hardware_info(user_info: dict = None):
         except Exception as e:
             return None, f"Error generating QR code: {e}"
     return None, "No simplified hardware information to generate QR code."
+
+def get_running_processes():
+    processes = []
+    for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+        try:
+            processes.append({
+                'pid': proc.info['pid'],
+                'name': proc.info['name'],
+                'cpu_percent': proc.info['cpu_percent'],
+                'memory_percent': proc.info['memory_percent']
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    # Sort processes by CPU usage in descending order
+    return sorted(processes, key=lambda x: x['cpu_percent'], reverse=True)
