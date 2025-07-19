@@ -53,6 +53,22 @@ all_translations = {
         "Desktop": "Desktop",
         "Laptop": "Laptop",
 
+        # User Info
+        "User Information": "User Information",
+        "Full Name": "Full Name",
+        "Department": "Department",
+        "Notes": "Notes",
+        "Error": "Error",
+        "fullname_department_required": "Full Name and Department are required to export.",
+        "no_qr_code_to_export": "No QR code available to export.",
+
+        # Applications
+        "Export to TXT": "Export to TXT",
+        "Generate QR Code": "Generate QR Code",
+        "Export & Generate QR": "Export & Generate QR",
+        "Export QR": "Export QR",
+        "Export TXT": "Export TXT",
+
         # Applications
         "Installed Apps": "Installed Apps",
         "Startup Apps": "Startup Apps",
@@ -84,7 +100,7 @@ all_translations = {
         "Open Device Manager": "Open Device Manager",
         "Create System Restore Point": "Create System Restore Point",
         "Backup Drivers": "Backup Drivers",
-        "driver_backup_info": "Driver backups will be saved to C:\driver-backups",
+        "driver_backup_info": "Driver backups will be saved to C:\\driver-backups",
 
         # About
         "about_text": "HPC System Monitor\nVersion 1.0\n\nDeveloped by Gemini AI from Google.\n\nThis application provides a comprehensive overview of your system's performance and hardware,\nalong with tools for system maintenance and repair.\n\nFor more information, visit the project's GitHub page.",
@@ -149,7 +165,30 @@ all_translations = {
         "Desktop": "Máy tính để bàn",
         "Laptop": "Máy tính xách tay",
 
+        # User Info
+        "User Information": "Thông tin Người dùng",
+        "Full Name": "Họ tên",
+        "Department": "Phòng ban",
+        "Notes": "Ghi chú",
+        "Error": "Lỗi",
+        "fullname_department_required": "Cần nhập Họ tên và Phòng ban để xuất.",
+        "no_qr_code_to_export": "Không có mã QR để xuất.",
+
         # Applications
+        "Generate QR Code": "Tạo mã QR",
+        "Export & Generate QR": "Xuất & Tạo mã QR",
+        "Export QR": "Xuất QR",
+        "Export TXT": "Xuất TXT",
+
+        # Applications
+        "Name": "Tên",
+        "Publisher": "Nhà phát hành",
+        "Install Date": "Ngày cài đặt",
+        "Action": "Hành động",
+        "Path": "Đường dẫn",
+        "Status": "Trạng thái",
+        "Failed to change startup app status": "Không thể thay đổi trạng thái ứng dụng khởi động",
+
         "Installed Apps": "Ứng dụng đã cài đặt",
         "Startup Apps": "Ứng dụng khởi động",
         "Uninstall": "Gỡ cài đặt",
@@ -180,7 +219,7 @@ all_translations = {
         "Open Device Manager": "Mở Trình quản lý Thiết bị (Device Manager)",
         "Create System Restore Point": "Tạo điểm Khôi phục Hệ thống",
         "Backup Drivers": "Sao lưu Trình điều khiển (Driver)",
-        "driver_backup_info": "Các bản sao lưu trình điều khiển sẽ được lưu vào C:\driver-backups",
+        "driver_backup_info": "Các bản sao lưu trình điều khiển sẽ được lưu vào C:\\driver-backups",
 
         # About
         "about_text": "HPC Giám sát Hệ thống\nPhiên bản 1.0\n\nPhát triển bởi Gemini AI từ Google.\n\nỨng dụng này cung cấp cái nhìn tổng quan về hiệu suất và phần cứng của hệ thống,\ncùng với các công cụ để bảo trì và sửa chữa hệ thống.\n\nĐể biết thêm thông tin, hãy truy cập trang GitHub của dự án.",

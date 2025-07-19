@@ -4,6 +4,7 @@ from logic import logic
 from logic import actions
 from logic import localization
 
+
 class SystemMonitorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -14,7 +15,7 @@ class SystemMonitorApp(ctk.CTk):
         self.geometry("1100x700")
         self.resizable(False, False)
 
-        ctk.set_appearance_mode("Dark")
+        ctk.set_appearance_mode("Light")  # Set light mode as default
         ctk.set_default_color_theme("blue")
 
         main_container = ctk.CTkFrame(self)
@@ -49,6 +50,7 @@ class SystemMonitorApp(ctk.CTk):
 
         self.show_dashboard()
         self.active_after_ids = {}
+        self.current_qr_image = None # To store the PIL Image for QR export
 
     def show_frame(self, name):
         # Cancel any pending 'after' calls
@@ -172,7 +174,7 @@ class SystemMonitorApp(ctk.CTk):
             disk_entry.pack(fill="x", pady=2)
             label = ctk.CTkLabel(disk_entry, text=f"{disk['device']} ({disk['fstype']}) - {disk['total'] / (1024**3):.1f} GB", anchor="w")
             label.pack(side="left", padx=10)
-            percent_label = ctk.CTkLabel(disk_entry, text=f"{disk['percent']}%")
+            percent_label = ctk.CTkLabel(disk_entry, text=f"{disk['percent']}%" )
             percent_label.pack(side="right", padx=10)
             progress = ctk.CTkProgressBar(disk_entry, height=8)
             progress.set(disk['percent'] / 100)
@@ -186,23 +188,212 @@ class SystemMonitorApp(ctk.CTk):
         for widget in hardware_frame.winfo_children():
             widget.destroy()
 
+        # Configure grid for the main hardware_frame
+        hardware_frame.grid_rowconfigure(0, weight=0) # User Info section (fixed height)
+        hardware_frame.grid_rowconfigure(1, weight=1) # Hardware Details section (expands)
+        hardware_frame.grid_columnconfigure(0, weight=1) # Single column for both sections
+
+        # --- User Information Section (Top) ---
+        user_info_section = ctk.CTkFrame(hardware_frame)
+        user_info_section.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        user_info_section.grid_columnconfigure(0, weight=3) # Input fields area
+        user_info_section.grid_columnconfigure(1, weight=1) # QR code and buttons area
+
+        # User Input Fields (Left side of User Info Section)
+        input_fields_frame = ctk.CTkFrame(user_info_section, fg_color="transparent")
+        input_fields_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        input_fields_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(input_fields_frame, text=localization.get_text("User Information"), font=("Arial", 18, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        input_fields_frame.grid_columnconfigure(0, weight=0) # Label column
+        input_fields_frame.grid_columnconfigure(1, weight=1) # Entry column
+
+        # Full Name
+        ctk.CTkLabel(input_fields_frame, text=localization.get_text("Full Name") + ":", anchor="w").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.fullname_entry = ctk.CTkEntry(input_fields_frame, corner_radius=10, border_width=2, height=35)
+        self.fullname_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+
+        # Department
+        ctk.CTkLabel(input_fields_frame, text=localization.get_text("Department") + ":", anchor="w").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.department_entry = ctk.CTkEntry(input_fields_frame, corner_radius=10, border_width=2, height=35)
+        self.department_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+
+        # Notes
+        ctk.CTkLabel(input_fields_frame, text=localization.get_text("Notes") + ":", anchor="w").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+        self.notes_entry = ctk.CTkEntry(input_fields_frame, corner_radius=10, border_width=2, height=35)
+        self.notes_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
+        # Export Buttons (on one row, aligned with entry fields)
+        button_frame = ctk.CTkFrame(input_fields_frame, fg_color="transparent")
+        button_frame.grid(row=4, column=1, pady=10, sticky="ew") # Changed column and removed columnspan
+        button_frame.grid_columnconfigure((0, 1), weight=1) # Distribute space evenly for buttons
+
+        self.export_qr_button = ctk.CTkButton(
+            button_frame,
+            text=localization.get_text("Export QR"),
+            command=self.export_qr_code_with_user_info,
+            state="disabled"
+        )
+        self.export_qr_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+
+        self.export_txt_button = ctk.CTkButton(
+            button_frame,
+            text=localization.get_text("Export TXT"),
+            command=self.export_txt_with_user_info,
+            state="disabled"
+        )
+        self.export_txt_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+
+        self.fullname_entry.bind("<KeyRelease>", self._check_export_button_state)
+        self.department_entry.bind("<KeyRelease>", self._check_export_button_state)
+
+        # QR Code (Right side of User Info Section)
+        qr_export_frame = ctk.CTkFrame(user_info_section)
+        qr_export_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        qr_export_frame.grid_columnconfigure(0, weight=1) # Center QR
+
+        self.qr_code_label = ctk.CTkLabel(qr_export_frame, text="")
+        self.qr_code_label.pack(pady=10)
+
+        # --- Hardware Information Section (Bottom) ---
+        hardware_details_section = ctk.CTkFrame(hardware_frame)
+        hardware_details_section.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        hardware_details_section.grid_columnconfigure(0, weight=1) # Single column for hardware details
+
+        ctk.CTkLabel(hardware_details_section, text=localization.get_text("Hardware Information"), font=("Arial", 24, "bold")).pack(anchor="w", pady=(0, 10))
+
         info, error = logic.get_hardware_info()
         if error:
-            ctk.CTkLabel(hardware_frame, text=localization.get_text("error_occurred").format(e=error), font=("Arial", 16)).pack(pady=20)
+            ctk.CTkLabel(hardware_details_section, text=localization.get_text("error_occurred").format(e=error), font=("Arial", 16)).pack(pady=20)
             return
 
-        scrollable_frame = ctk.CTkScrollableFrame(hardware_frame)
-        scrollable_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        scrollable_frame = ctk.CTkScrollableFrame(hardware_details_section, fg_color="transparent")
+        scrollable_frame.pack(fill="both", expand=True, padx=5, pady=0)
 
-        for title, info_dict in info.items():
-            section_frame = ctk.CTkFrame(scrollable_frame, corner_radius=5)
-            section_frame.pack(fill="x", pady=5, padx=5)
-            ctk.CTkLabel(section_frame, text=localization.get_text(title), font=("Arial", 16, "bold")).pack(anchor="w", padx=10, pady=5)
-            for key, value in info_dict.items():
-                info_entry = ctk.CTkFrame(section_frame)
-                info_entry.pack(fill="x", padx=10, pady=2)
-                ctk.CTkLabel(info_entry, text=localization.get_text(key), anchor="w", width=200).pack(side="left")
-                ctk.CTkLabel(info_entry, text=value, anchor="w").pack(side="left")
+        # Automatically generate and display QR code on load
+        self.generate_and_display_qr_code_with_user_info()
+
+        def create_info_row(parent, key, value, row_index, is_subheader=False):
+            parent.grid_columnconfigure(1, weight=1)
+            key_font = ("Arial", 12, "bold")
+            val_font = ("Arial", 12)
+            if is_subheader:
+                key_font = ("Arial", 14, "bold")
+
+            key_label = ctk.CTkLabel(parent, text=localization.get_text(key), font=key_font, anchor="w")
+            key_label.grid(row=row_index, column=0, sticky="w", padx=10, pady=2)
+
+            if value:
+                value_label = ctk.CTkLabel(parent, text=value, font=val_font, anchor="w", wraplength=600, justify="left")
+                value_label.grid(row=row_index, column=1, sticky="w", padx=10, pady=2)
+
+        def create_section(title, info_data):
+            section_container = ctk.CTkFrame(scrollable_frame)
+            section_container.pack(fill="x", pady=(0, 10), padx=5)
+
+            ctk.CTkLabel(section_container, text=localization.get_text(title), font=("Arial", 18, "bold")).pack(fill="x", padx=10, pady=5)
+            
+            content_frame = ctk.CTkFrame(section_container, fg_color="transparent")
+            content_frame.pack(fill="x", expand=True, padx=5)
+
+            if title in ["Storage", "GPU", "Network Adapters"]:
+                for i, (device_name, device_details) in enumerate(info_data.items()):
+                    if i > 0:
+                        sep = ctk.CTkFrame(content_frame, height=1, fg_color="gray50")
+                        sep.pack(fill="x", padx=10, pady=10)
+                    
+                    device_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+                    device_frame.pack(fill="x", expand=True)
+                    
+                    device_row_index = 0
+                    create_info_row(device_frame, device_name, "", device_row_index, is_subheader=True)
+                    device_row_index += 1
+                    for key, value in device_details.items():
+                        create_info_row(device_frame, f"  {key}", value, device_row_index)
+                        device_row_index += 1
+            elif title == "RAM":
+                row_index = 0
+                create_info_row(content_frame, "Total", info_data.get("Total"), row_index)
+                row_index += 1
+                create_info_row(content_frame, "Slots", info_data.get("Slots"), row_index)
+                row_index += 1
+                create_info_row(content_frame, "Modules", "", row_index)
+                row_index += 1
+                for module in info_data.get("Modules", []):
+                    module_label = ctk.CTkLabel(content_frame, text=f"    - {module}", font=("Arial", 12), anchor="w")
+                    module_label.grid(row=row_index, column=0, columnspan=2, sticky="w", padx=20, pady=1)
+                    row_index += 1
+            else:
+                row_index = 0
+                for key, value in info_data.items():
+                    create_info_row(content_frame, key, value, row_index)
+                    row_index += 1
+
+        for section_title, section_data in info.items():
+            create_section(section_title, section_data)
+
+    def generate_and_display_qr_code_with_user_info(self):
+        user_info = {
+            "Full Name": self.fullname_entry.get(),
+            "Department": self.department_entry.get(),
+            "Notes": self.notes_entry.get()
+        }
+        qr_image, error = logic.generate_qr_code_for_hardware_info(user_info)
+        if error:
+            self.qr_code_label.configure(text=f"Error: {error}", text_color="red")
+            self.qr_code_label.configure(image=None) # Clear any previous image
+            self.current_qr_image = None
+        elif qr_image:
+            self.current_qr_image = qr_image # Store PIL Image
+            ctk_qr_image = ctk.CTkImage(qr_image.convert("RGB"), size=(150, 150)) # Adjust size as needed
+            self.qr_code_label.configure(image=ctk_qr_image, text="")
+        else:
+            self.qr_code_label.configure(text="No QR code generated.", text_color="red")
+            self.qr_code_label.configure(image=None)
+            self.current_qr_image = None
+
+    def export_qr_code_with_user_info(self):
+        fullname = self.fullname_entry.get()
+        department = self.department_entry.get()
+
+        if not fullname or not department:
+            # Display an error message to the user
+            customtkinter.CTkMessageBox(title=localization.get_text("Error"), message=localization.get_text("fullname_department_required")).show_warning()
+            return
+
+        if self.current_qr_image:
+            actions.export_qr_code_image(self.current_qr_image)
+        else:
+            customtkinter.CTkMessageBox(title=localization.get_text("Error"), message=localization.get_text("no_qr_code_to_export")).show_warning()
+
+    def export_txt_with_user_info(self):
+        fullname = self.fullname_entry.get()
+        department = self.department_entry.get()
+        notes = self.notes_entry.get()
+
+        if not fullname or not department:
+            # Display an error message to the user
+            customtkinter.CTkMessageBox(title=localization.get_text("Error"), message=localization.get_text("fullname_department_required")).show_warning()
+            return
+
+        user_info = {
+            "Full Name": fullname,
+            "Department": department,
+            "Notes": notes
+        }
+        actions.export_hardware_info_to_txt(user_info)
+
+    def _check_export_button_state(self, event=None):
+        fullname_filled = bool(self.fullname_entry.get())
+        department_filled = bool(self.department_entry.get())
+
+        if fullname_filled and department_filled:
+            self.export_qr_button.configure(state="normal")
+            self.export_txt_button.configure(state="normal")
+        else:
+            self.export_qr_button.configure(state="disabled")
+            self.export_txt_button.configure(state="disabled")
 
     def show_applications(self):
         self.show_frame("Applications")
@@ -216,23 +407,72 @@ class SystemMonitorApp(ctk.CTk):
         installed_tab = tab_view.add(localization.get_text("Installed Apps"))
         startup_tab = tab_view.add(localization.get_text("Startup Apps"))
 
+        # --- Installed Apps Tab ---
         installed_frame = ctk.CTkScrollableFrame(installed_tab)
         installed_frame.pack(fill="both", expand=True)
-        for name, publisher, date in logic.get_installed_apps():
-            app_entry = ctk.CTkFrame(installed_frame)
-            app_entry.pack(fill="x", pady=2, padx=5)
-            ctk.CTkLabel(app_entry, text=f"{name} - {publisher} ({date})").pack(side="left", padx=5, expand=True, anchor="w")
-            ctk.CTkButton(app_entry, text=localization.get_text("Uninstall"), width=80).pack(side="right", padx=5)
 
+        # Table Headers for Installed Apps
+        header_font = ("Arial", 12, "bold")
+        installed_frame.grid_columnconfigure(0, weight=3) # Name
+        installed_frame.grid_columnconfigure(1, weight=2) # Publisher
+        installed_frame.grid_columnconfigure(2, weight=1) # Install Date
+        installed_frame.grid_columnconfigure(3, weight=1) # Action
+
+        ctk.CTkLabel(installed_frame, text=localization.get_text("Name"), font=header_font).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(installed_frame, text=localization.get_text("Publisher"), font=header_font).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(installed_frame, text=localization.get_text("Install Date"), font=header_font).grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(installed_frame, text=localization.get_text("Action"), font=header_font).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+
+        # Installed Apps Data
+        row_index = 1
+        for name, publisher, date in logic.get_installed_apps():
+            ctk.CTkLabel(installed_frame, text=name, wraplength=250, justify="left").grid(row=row_index, column=0, padx=5, pady=2, sticky="w")
+            ctk.CTkLabel(installed_frame, text=publisher, wraplength=150, justify="left").grid(row=row_index, column=1, padx=5, pady=2, sticky="w")
+            ctk.CTkLabel(installed_frame, text=date).grid(row=row_index, column=2, padx=5, pady=2, sticky="w")
+            ctk.CTkButton(installed_frame, text=localization.get_text("Uninstall"), width=80).grid(row=row_index, column=3, padx=5, pady=2, sticky="e")
+            row_index += 1
+
+        # --- Startup Apps Tab ---
         startup_frame = ctk.CTkScrollableFrame(startup_tab)
         startup_frame.pack(fill="both", expand=True)
-        for name, path in logic.get_startup_apps():
-            startup_entry = ctk.CTkFrame(startup_frame)
-            startup_entry.pack(fill="x", pady=2, padx=5)
-            ctk.CTkLabel(startup_entry, text=f"{name}\n{path}").pack(side="left", padx=5, expand=True, anchor="w")
-            switch = ctk.CTkSwitch(startup_entry, text="")
-            switch.pack(side="right", padx=5)
-            switch.select()
+
+        # Table Headers for Startup Apps
+        startup_frame.grid_columnconfigure(0, weight=2) # Name
+        startup_frame.grid_columnconfigure(1, weight=3) # Path
+        startup_frame.grid_columnconfigure(2, weight=1) # Status
+
+        ctk.CTkLabel(startup_frame, text=localization.get_text("Name"), font=header_font).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(startup_frame, text=localization.get_text("Path"), font=header_font).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(startup_frame, text=localization.get_text("Status"), font=header_font).grid(row=0, column=2, padx=5, pady=5, sticky="w")
+
+        # Startup Apps Data
+        row_index = 1
+        for app_info in logic.get_startup_apps():
+            ctk.CTkLabel(startup_frame, text=app_info["name"], wraplength=200, justify="left").grid(row=row_index, column=0, padx=5, pady=2, sticky="w")
+            ctk.CTkLabel(startup_frame, text=app_info["path"], wraplength=300, justify="left").grid(row=row_index, column=1, padx=5, pady=2, sticky="w")
+            
+            switch = ctk.CTkSwitch(startup_frame, text="")
+            def on_switch_toggle(state, current_app_info=app_info):
+                self._toggle_startup_app(current_app_info, state)
+            switch.configure(command=on_switch_toggle)
+            switch.grid(row=row_index, column=2, padx=5, pady=2, sticky="w")
+            if app_info["enabled"]:
+                switch.select()
+            else:
+                switch.deselect()
+            row_index += 1
+
+    def _toggle_startup_app(self, app_info, state):
+        print(f"_toggle_startup_app called with: {app_info['name']}, state: {state}") # Debug print
+        success, error = logic.set_startup_app_status(
+            app_info["hkey"],
+            app_info["subkey"],
+            app_info["value_name"],
+            app_info["path"],
+            state
+        )
+        if not success:
+            customtkinter.CTkMessageBox(title=localization.get_text("Error"), message=f"{localization.get_text("Failed to change startup app status")}: {error}").show_warning()
 
     def show_security(self):
         self.show_frame("Security")
@@ -349,10 +589,10 @@ class SystemMonitorApp(ctk.CTk):
         github_link.bind("<Button-1>", lambda e: actions.open_github())
 
     def toggle_theme(self):
-        if self.theme_switch.get() == 1:
-            ctk.set_appearance_mode("Dark")
-        else:
+        if ctk.get_appearance_mode() == "Dark":
             ctk.set_appearance_mode("Light")
+        else:
+            ctk.set_appearance_mode("Dark")
 
     def change_language(self, new_language_name):
         localization.set_language_by_name(new_language_name)
@@ -378,5 +618,3 @@ class SystemMonitorApp(ctk.CTk):
                 self.show_repair_restore()
             elif current_frame_name == "Settings":
                 self.show_settings()
-
-    
