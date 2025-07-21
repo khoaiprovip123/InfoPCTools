@@ -55,9 +55,15 @@ all_translations = {
 
         # User Info
         "User Information": "User Information",
-        "Full Name": "Full Name",
-        "Department": "Department",
-        "Notes": "Notes",
+        "Full Name:": "Full Name:",
+        "Department:": "Department:",
+        "Notes:": "Notes:",
+        "Enter full name": "Enter full name",
+        "Enter department": "Enter department",
+        "Add notes": "Add notes",
+        "Save": "Save",
+        "Print": "Print",
+        "No user info entered.": "No user info entered.",
         "Error": "Error",
         "fullname_department_required": "Full Name and Department are required to export.",
         "no_qr_code_to_export": "No QR code available to export.",
@@ -79,6 +85,9 @@ all_translations = {
         "CPU": "CPU",
         "Memory": "Memory",
         "No running processes found.": "No running processes found.",
+        "Search installed apps...": "Search installed apps...",
+        "Search startup apps...": "Search startup apps...",
+        "Search processes...": "Search processes...",
 
         # Security
         "Firewall Status": "Firewall Status",
@@ -109,7 +118,15 @@ all_translations = {
         "driver_backup_info": "Driver backups will be saved to C:\\driver-backups",
 
         # About
-        "about_text": "HPC System Monitor\nVersion 1.0\n\nDeveloped by Gemini AI from Google.\n\nThis application provides a comprehensive overview of your system's performance and hardware,\nalong with tools for system maintenance and repair.\n\nFor more information, visit the project's GitHub page.",
+        "about_text": "HPC System Monitor
+Version 1.1
+
+Developed by Gemini AI from Google.
+
+This application provides a comprehensive overview of your system's performance and hardware,
+along with tools for system maintenance and repair.
+
+For more information, visit the project's GitHub page.",
         "github_repo": "GitHub Repository (Placeholder)",
         
         # Settings
@@ -173,9 +190,15 @@ all_translations = {
 
         # User Info
         "User Information": "Thông tin Người dùng",
-        "Full Name": "Họ tên",
-        "Department": "Phòng ban",
-        "Notes": "Ghi chú",
+        "Full Name:": "Họ tên:",
+        "Department:": "Phòng ban:",
+        "Notes:": "Ghi chú:",
+        "Enter full name": "Nhập họ tên đầy đủ",
+        "Enter department": "Nhập phòng ban",
+        "Add notes": "Thêm ghi chú",
+        "Save": "Lưu",
+        "Print": "In",
+        "No user info entered.": "Chưa nhập thông tin người dùng.",
         "Error": "Lỗi",
         "fullname_department_required": "Cần nhập Họ tên và Phòng ban để xuất.",
         "no_qr_code_to_export": "Không có mã QR để xuất.",
@@ -188,7 +211,7 @@ all_translations = {
 
         # Applications
         "Name": "Tên",
-        "Publisher": "Nhà phát hành",
+        "Publisher": "Tên nhà cung cấp",
         "Install Date": "Ngày cài đặt",
         "Action": "Hành động",
         "Path": "Đường dẫn",
@@ -204,6 +227,9 @@ all_translations = {
         "CPU": "CPU",
         "Memory": "Bộ nhớ",
         "No running processes found.": "Không tìm thấy tiến trình nào đang chạy.",
+        "Search installed apps...": "Tìm kiếm ứng dụng đã cài đặt...",
+        "Search startup apps...": "Tìm kiếm ứng dụng khởi động...",
+        "Search processes...": "Tìm kiếm tiến trình...",
 
         # Security
         "Firewall Status": "Trạng thái Tường lửa",
@@ -216,6 +242,26 @@ all_translations = {
         "Click to check": "Nhấn để kiểm tra",
         "Check": "Kiểm tra",
         "Settings": "Cài đặt",
+        "System Security": "Bảo mật Hệ thống",
+        "Windows Defender": "Windows Defender",
+        "User Account Control (UAC)": "Kiểm soát Tài khoản Người dùng (UAC)",
+        "Drive Encryption": "Mã hóa Ổ đĩa",
+        "BitLocker Status": "Trạng thái BitLocker",
+        "Security Scans": "Quét Bảo mật",
+        "Quick Scan": "Quét Nhanh",
+        "Full Scan": "Quét Toàn bộ",
+        "Click to run": "Nhấn để chạy",
+        "Open Settings": "Mở Cài đặt",
+        "Run Scan": "Chạy Quét",
+        "Enable": "Bật",
+        "Disable": "Tắt",
+        "Firewall & Network Protection": "Bảo vệ Tường lửa & Mạng",
+        "Real-time Protection": "Bảo vệ Thời gian thực",
+        "Virus Definitions": "Cập nhật Định nghĩa Virus",
+        "Last updated: N/A": "Cập nhật lần cuối: N/A",
+        "Application Updates": "Cập nhật Ứng dụng",
+        "Check for App Updates": "Kiểm tra Cập nhật Ứng dụng",
+        "Last checked: N/A": "Kiểm tra lần cuối: N/A",
 
         # Network
         "Network Configuration": "Cấu hình Mạng",
@@ -234,7 +280,7 @@ all_translations = {
         "driver_backup_info": "Các bản sao lưu trình điều khiển sẽ được lưu vào C:\\driver-backups",
 
         # About
-        "about_text": "HPC Giám sát Hệ thống\nPhiên bản 1.0\n\nPhát triển bởi Gemini AI từ Google.\n\nỨng dụng này cung cấp cái nhìn tổng quan về hiệu suất và phần cứng của hệ thống,\ncùng với các công cụ để bảo trì và sửa chữa hệ thống.\n\nĐể biết thêm thông tin, hãy truy cập trang GitHub của dự án.",
+        "about_text": "HPC Giám sát Hệ thống\nPhiên bản 1.1\n\nPhát triển bởi Gemini AI từ Google.\n\nỨng dụng này cung cấp cái nhìn tổng quan về hiệu suất và phần cứng của hệ thống,\ncùng với các công cụ để bảo trì và sửa chữa hệ thống.\n\nĐể biết thêm thông tin, hãy truy cập trang GitHub của dự án.",
         "github_repo": "Kho lưu trữ GitHub (Placeholder)",
 
         # Settings

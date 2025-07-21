@@ -1,1 +1,8 @@
+customtkinter
+psutil
+wmi
+pillow
+requests
+ping3
+matplotlib
 qrcode
