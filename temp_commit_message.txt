@@ -1,0 +1,1 @@
+docs: Update application version to 1.1

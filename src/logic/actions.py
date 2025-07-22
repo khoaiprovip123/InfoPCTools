@@ -1,10 +1,11 @@
 
 
+
 import os
 import subprocess
 import webbrowser
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 from PIL import Image
 from . import logic # Import logic to get hardware info
 
@@ -170,3 +171,192 @@ def update_applications():
     # or specific application update mechanisms.
     pass
 
+def update_drivers():
+    print("Checking for driver updates...")
+    # Placeholder for actual driver update logic
+    pass
+
+def system_restore():
+    """Opens the System Restore wizard."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process rstrui.exe -Verb RunAs'], shell=True)
+    except Exception as e:
+        print(f"Error opening System Restore: {e}")
+
+def system_scan():
+    """Runs SFC /scannow to scan and repair system files."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process cmd -Verb RunAs -ArgumentList "/c sfc /scannow"'], shell=True)
+    except Exception as e:
+        print(f"Error running system scan: {e}")
+
+def fix_printer():
+    """Opens the printer troubleshooter."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process "msdt.exe" -ArgumentList "/id PrinterDiagnostic"'], shell=True)
+    except Exception as e:
+        print(f"Error opening printer troubleshooter: {e}")
+
+def delete_printer():
+    """Opens the print management console to delete a printer."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process printmanagement.msc -Verb RunAs'], shell=True)
+    except Exception as e:
+        print(f"Error opening print management: {e}")
+
+def install_printer():
+    """Opens the Add Printer wizard."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process "rundll32.exe" -ArgumentList "printui.dll,PrintUIEntry /il"'], shell=True)
+    except Exception as e:
+        print(f"Error opening Add Printer wizard: {e}")
+
+def open_windows_security():
+    """Opens the Windows Security app."""
+    try:
+        os.system("start windowsdefender:")
+    except Exception as e:
+        print(f"Error opening Windows Security: {e}")
+
+def open_account_settings():
+    """Opens the Windows account settings."""
+    try:
+        os.system("start ms-settings:signinoptions")
+    except Exception as e:
+        print(f"Error opening account settings: {e}")
+
+def open_app_browser_control():
+    """Opens the App & browser control settings."""
+    try:
+        os.system("start ms-settings:appsfeatures")
+    except Exception as e:
+        print(f"Error opening App & browser control: {e}")
+
+def open_print_management():
+    """Opens the Print Management console."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process printmanagement.msc -Verb RunAs'], shell=True)
+    except Exception as e:
+        print(f"Error opening Print Management: {e}")
+
+def create_system_image():
+    """Initiates the Windows System Image Backup wizard."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process sdclt.exe -Verb RunAs'], shell=True)
+    except Exception as e:
+        print(f"Error initiating System Image Backup: {e}")
+
+def backup_files_folders():
+    """Opens the File History settings for backing up files and folders."""
+    try:
+        os.system("start ms-settings:backup")
+    except Exception as e:
+        print(f"Error opening File History settings: {e}")
+
+def restore_files_folders():
+    """Opens the File History restore interface."""
+    try:
+        os.system("start control.exe /name Microsoft.FileHistory")
+    except Exception as e:
+        print(f"Error opening File History restore: {e}")
+
+def open_recovery_drive_creator():
+    """Opens the Recovery Drive Creator wizard."""
+    try:
+        subprocess.Popen(['powershell', '-Command', 'Start-Process recoverydrive.exe -Verb RunAs'], shell=True)
+    except Exception as e:
+        print(f"Error opening Recovery Drive Creator: {e}")
+
+def flush_dns():
+    """Flushes the DNS resolver cache."""
+    try:
+        result = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, text=True, check=True, shell=True)
+        print("DNS cache flushed successfully.\n" + result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Error flushing DNS cache: {e.stderr}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+def release_ip():
+    """Releases the IP address for all adapters."""
+    try:
+        result = subprocess.run(["ipconfig", "/release"], capture_output=True, text=True, check=True, shell=True)
+        print("IP address released successfully.\n" + result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Error releasing IP address: {e.stderr}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+def renew_ip():
+    """Renews the IP address for all adapters."""
+    try:
+        result = subprocess.run(["ipconfig", "/renew"], capture_output=True, text=True, check=True, shell=True)
+        print("IP address renewed successfully.\n" + result.stdout)
+    except subprocess.CalledProcessError as e:
+        print(f"Error renewing IP address: {e.stderr}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+def open_network_sharing_center():
+    """Opens the Network and Sharing Center."""
+    try:
+        os.system("start control.exe /name Microsoft.NetworkAndSharingCenter")
+    except Exception as e:
+        print(f"Error opening Network and Sharing Center: {e}")
+
+def ping_host():
+    """Pings a specified host to check network connectivity."""
+    root = tk.Tk()
+    root.withdraw()
+    host = simpledialog.askstring("Ping Host", "Enter host to ping:")
+    root.destroy()
+    if host:
+        try:
+            result = subprocess.run(["ping", host], capture_output=True, text=True, check=True, shell=True)
+            print(result.stdout)
+        except subprocess.CalledProcessError as e:
+            print(f"Error pinging host: {e.stderr}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+
+def set_dns():
+    """Allows the user to set custom DNS servers for a network adapter."""
+    root = tk.Tk()
+    root.withdraw()
+    adapter_name = simpledialog.askstring("Set DNS", "Enter the name of the network adapter (e.g., Ethernet):")
+    if adapter_name:
+        dns_server = simpledialog.askstring("Set DNS", "Enter the preferred DNS server (e.g., 8.8.8.8):")
+        if dns_server:
+            try:
+                # Set primary DNS
+                subprocess.run(["netsh", "interface", "ipv4", "set", "dns", adapter_name, "static", dns_server, "primary"], check=True, shell=True)
+                print(f"DNS set to {dns_server} for {adapter_name}.")
+                # Optionally, set secondary DNS
+                secondary_dns = simpledialog.askstring("Set DNS", "Enter the secondary DNS server (optional):")
+                if secondary_dns:
+                    subprocess.run(["netsh", "interface", "ipv4", "add", "dns", adapter_name, secondary_dns, "index=2"], check=True, shell=True)
+                    print(f"Secondary DNS set to {secondary_dns} for {adapter_name}.")
+            except subprocess.CalledProcessError as e:
+                print(f"Error setting DNS: {e.stderr}")
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+    root.destroy()
+
+def set_static_ip():
+    """Allows the user to set a static IP address for a network adapter."""
+    root = tk.Tk()
+    root.withdraw()
+    adapter_name = simpledialog.askstring("Set Static IP", "Enter the name of the network adapter (e.g., Ethernet):")
+    if adapter_name:
+        ip_address = simpledialog.askstring("Set Static IP", "Enter the IP Address:")
+        subnet_mask = simpledialog.askstring("Set Static IP", "Enter the Subnet Mask:")
+        gateway = simpledialog.askstring("Set Static IP", "Enter the Default Gateway:")
+        if all([ip_address, subnet_mask, gateway]):
+            try:
+                subprocess.run(["netsh", "interface", "ipv4", "set", "address", adapter_name, "static", ip_address, subnet_mask, gateway], check=True, shell=True)
+                print(f"Static IP set for {adapter_name}: IP={ip_address}, Subnet={subnet_mask}, Gateway={gateway}")
+            except subprocess.CalledProcessError as e:
+                print(f"Error setting static IP: {e.stderr}")
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+    root.destroy()

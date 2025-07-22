@@ -353,37 +353,3 @@ class DashboardView(ctk.CTkFrame):
 
     def _card_clicked(self, title_key):
         self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")
-        self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")
-        for i, disk_data in enumerate(physical_disks_data):
-            model = disk_data['model']
-            if model not in self.disk_widgets:
-                entry_frame = ctk.CTkFrame(self.disk_info_frame, fg_color="transparent", corner_radius=10)
-                entry_frame.pack(fill="x", pady=6, padx=8, expand=True)  # expand=True giúp chiếm đủ chiều ngang
-                entry_frame.grid_columnconfigure(1, weight=1)
-
-                label = ctk.CTkLabel(entry_frame, text="", anchor="w", font=self.STYLE["font_info"], text_color=self.text_color)
-                label.grid(row=0, column=0, sticky="w")
-
-                info_label = ctk.CTkLabel(entry_frame, text="", anchor="e", font=self.STYLE["font_detail"], text_color=self.text_color)
-                info_label.grid(row=0, column=2, sticky="e", padx=8)
-
-                progress = ctk.CTkProgressBar(entry_frame, height=10, corner_radius=6)
-                progress.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 0))
-                
-                self.disk_widgets[model] = {'frame': entry_frame, 'label': label, 'info': info_label, 'progress': progress}
-
-            percent = disk_data['percent']
-            total_gb = disk_data['total'] / (1024**3)
-            used_gb = disk_data['used'] / (1024**3)
-            
-            self.disk_widgets[model]['label'].configure(text=f"{model}")
-            self.disk_widgets[model]['info'].configure(text=f"{used_gb:.1f} / {total_gb:.1f} GB")
-            self.disk_widgets[model]['progress'].set(percent / 100)
-            self.disk_widgets[model]['progress'].configure(progress_color=self._get_progress_color(percent))
-
-    def _card_clicked(self, title_key):
-        self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")
-        self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")
-    def _card_clicked(self, title_key):
-        self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")
-        self.app_instance.show_frame(f"Detail - {localization.get_text(title_key)}")

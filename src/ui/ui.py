@@ -4,9 +4,9 @@ from logic import localization
 from .views.dashboard_view import DashboardView
 from .views.hardware_info_view import HardwareInfoView
 from .views.applications_view import ApplicationsView
-from .views.security_view import SecurityView
+from .views.update_security_view import UpdateSecurityView
 from .views.network_view import NetworkView
-from .views.repair_restore_view import RepairRestoreView
+from .views.backup_restore_view import BackupRestoreView
 from .views.settings_view import SettingsView
 from .views.detail_view import DetailView
 
@@ -44,9 +44,9 @@ class SystemMonitorApp(ctk.CTk):
             (localization.get_text("Dashboard"), "assets/icons/dashboard.png", lambda: self.show_frame("Dashboard")),
             (localization.get_text("Hardware Info"), "assets/icons/system.png", lambda: self.show_frame("Hardware Info")),
             (localization.get_text("Applications"), "assets/icons/utilities.png", lambda: self.show_frame("Applications")),
-            (localization.get_text("Security"), "assets/icons/security.png", lambda: self.show_frame("Security")),
+            (localization.get_text("Update & Security"), "assets/icons/security.png", lambda: self.show_frame("Update & Security")),
             (localization.get_text("Network"), "assets/icons/network.png", lambda: self.show_frame("Network")),
-            (localization.get_text("Repair & Restore"), "assets/icons/system_fix.png", lambda: self.show_frame("Repair & Restore")),
+            (localization.get_text("Backup & Restore"), "assets/icons/system_fix.png", lambda: self.show_frame("Backup & Restore")),
             (localization.get_text("Settings"), "assets/icons/optimize.png", lambda: self.show_frame("Settings"))
         ]
 
@@ -61,9 +61,9 @@ class SystemMonitorApp(ctk.CTk):
         self.content_frames["Dashboard"] = DashboardView(self.main_container, app_instance=self)
         self.content_frames["Hardware Info"] = HardwareInfoView(self.main_container)
         self.content_frames["Applications"] = ApplicationsView(self.main_container)
-        self.content_frames["Security"] = SecurityView(self.main_container)
+        self.content_frames["Update & Security"] = UpdateSecurityView(self.main_container)
         self.content_frames["Network"] = NetworkView(self.main_container)
-        self.content_frames["Repair & Restore"] = RepairRestoreView(self.main_container)
+        self.content_frames["Backup & Restore"] = BackupRestoreView(self.main_container)
         self.content_frames["Settings"] = SettingsView(self.main_container, app=self)
 
     def show_frame(self, name):

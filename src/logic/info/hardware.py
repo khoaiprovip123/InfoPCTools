@@ -14,6 +14,12 @@ def get_cpu_name():
     Gets the detailed CPU name using WMI if available for more detail,
     otherwise falls back to platform.processor().
     """
+    try:
+        name = platform.processor()
+        if name:
+            return " ".join(name.split())
+    except Exception:
+        pass
     if wmi:
         try:
             c = wmi.WMI()
@@ -24,13 +30,6 @@ def get_cpu_name():
         except Exception:
             # WMI might fail, so we'll fall through to the next method
             pass
-
-    try:
-        name = platform.processor()
-        if name:
-            return " ".join(name.split())
-    except Exception:
-        pass
 
     return "Unknown CPU"
 
@@ -146,7 +145,7 @@ def get_hardware_info():
             )
 
         # --- GPU ---
-        gpu_info = {}
+        gpu_info = {} 
         for gpu in c.Win32_VideoController():
             gpu_info[gpu.Name] = {
                 "VRAM": f"{int(gpu.AdapterRAM) / (1024**2):.0f} MB",
@@ -223,16 +222,23 @@ def get_hardware_info():
         return None, f"An error occurred: {e}"
 
 def get_network_config():
+    if not wmi:
+        return []
     config = []
-    addrs = psutil.net_if_addrs()
-    for interface_name, interface_addresses in addrs.items():
-        for address in interface_addresses:
-            if str(address.family) == 'AddressFamily.AF_INET':
+    try:
+        c = wmi.WMI()
+        for nic in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
+            if nic.IPAddress and nic.IPSubnet:
                 config.append({
-                    "interface": interface_name,
-                    "address": address.address,
-                    "netmask": address.netmask
+                    "interface": nic.Description,
+                    "address": nic.IPAddress[0],
+                    "netmask": nic.IPSubnet[0],
+                    "gateway": nic.DefaultIPGateway[0] if nic.DefaultIPGateway else "N/A",
+                    "mac_address": nic.MACAddress if nic.MACAddress else "N/A",
+                    "dhcp_enabled": "Yes" if nic.DHCPEnabled else "No"
                 })
+    except Exception as e:
+        print(f"Error getting network config: {e}")
     return config
 
 import requests
@@ -344,9 +350,13 @@ def get_active_connections():
             if conn.status == 'ESTABLISHED':
                 try:
                     proc = psutil.Process(conn.pid)
-                    connections.append(f"PID: {conn.pid} - {proc.name()} -> {conn.raddr.ip}:{conn.raddr.port}")
+                    connections.append({
+                        "pid": conn.pid,
+                        "process_name": proc.name(),
+                        "remote_address": f"{conn.raddr.ip}:{conn.raddr.port}"
+                    })
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
     except psutil.AccessDenied:
-        return ["Access Denied to retrieve network connections."]
+        return [{"pid": "N/A", "process_name": "N/A", "remote_address": "Access Denied to retrieve network connections."}]
     return connections
