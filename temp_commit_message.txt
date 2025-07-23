@@ -1,1 +1,1 @@
-docs: Update application version to 1.1
+Refactor: Enhance Network tab, update Settings and About descriptions, and improve UI consistency.

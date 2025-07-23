@@ -170,13 +170,12 @@ all_translations = {
         "open_app_browser_control_desc": "Manages reputation-based protection settings for apps and browsers.",
 
         # About
-        "about_text": '''HPC System Monitor\nVersion 1.1\n\nDeveloped by Gemini AI from Google.\n\nThis application provides a comprehensive overview of your system\'s performance and hardware,\nalong with tools for system maintenance and repair.\n\nFor more information, visit the project\'s GitHub page.''',
+        "about_text": '''HPC System Monitor\nVersion 1.1\n\nThis application provides a comprehensive overview of your system\'s performance and hardware,\nalong with tools for system maintenance and repair.\n\nFor more information, visit the project\'s GitHub page.''',
         "github_repo": "GitHub Repository (Placeholder)",
         
         # Settings
         "Application Information": "Application Information",
         "Version": "Version",
-        "Developed by Gemini AI from Google.": "Developed by Gemini AI from Google.",
         "Theme Settings": "Theme Settings",
         "Dark Mode": "Dark Mode",
         "Language Settings": "Language Settings",
@@ -401,14 +400,13 @@ all_translations = {
         "open_app_browser_control_desc": "Quản lý cài đặt bảo vệ dựa trên danh tiếng cho ứng dụng và trình duyệt.",
 
         # About
-        "about_text": '''HPC Giám sát Hệ thống\nPhiên bản 1.1\n\nPhát triển bởi Gemini AI từ Google.\n\nỨng dụng này cung cấp cái nhìn tổng quan về hiệu suất và phần cứng của hệ thống,\ncùng với các công cụ để bảo trì và sửa chữa hệ thống.\n\nĐể biết thêm thông tin, hãy truy cập trang GitHub của dự án.''',
+        "about_text": '''HPC Giám sát Hệ thống\nPhiên bản 1.1\n\nỨng dụng này cung cấp cái nhìn tổng quan về hiệu suất và phần cứng của hệ thống,\ncùng với các công cụ để bảo trì và sửa chữa hệ thống.\n\nĐể biết thêm thông tin, hãy truy cập trang GitHub của dự án.''',
         "github_repo": "Kho lưu trữ GitHub (Placeholder)",
 
         # Settings
         "Application Information": "Thông tin Ứng dụng",
         "app_info_desc": "Hiển thị thông tin về ứng dụng này, bao gồm phiên bản và nhà phát triển.",
         "Version": "Phiên bản",
-        "Developed by Gemini AI from Google.": "Được phát triển bởi Gemini AI từ Google.",
         "Theme Settings": "Cài đặt Giao diện",
         "theme_settings_desc": "Thay đổi giao diện của ứng dụng giữa chế độ sáng và tối.",
         "Dark Mode": "Chế độ Tối",
