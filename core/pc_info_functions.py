@@ -2660,6 +2660,74 @@ def optimize_windows_services():
         "details": suggested_optimizations
     }
 
+# --- New Granular Functions for Responsive Dashboard ---
+
+def get_os_info():
+    """Lấy thông tin cơ bản về Hệ điều hành (nhanh)."""
+    try:
+        os_name = f"{platform.system()} {platform.release()}"
+        os_version = platform.version()
+        return {"status": "success", "data": {"Hệ điều hành": os_name, "Phiên bản": os_version}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def get_cpu_basic_info(wmi_service):
+    """Lấy thông tin cơ bản về CPU (nhanh)."""
+    try:
+        cpu_model = get_cpu_info(wmi_service)
+        cores = psutil.cpu_count(logical=False)
+        threads = psutil.cpu_count(logical=True)
+        return {"status": "success", "data": {"Kiểu máy": cpu_model, "Lõi": cores, "Luồng": threads}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def get_ram_info():
+    """Lấy thông tin tổng quan về RAM (nhanh)."""
+    try:
+        ram = psutil.virtual_memory()
+        total_gb = round(ram.total / (1024 ** 3), 1)
+        used_gb = round(ram.used / (1024 ** 3), 1)
+        percent_used = ram.percent
+        return {"status": "success", "data": {"total_gb": total_gb, "used_gb": used_gb, "percent_used": percent_used}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def get_storage_summary(wmi_service):
+    """Lấy thông tin tóm tắt về các ổ đĩa (chậm hơn)."""
+    try:
+        partitions = get_disk_partitions_usage(wmi_service)
+        if not partitions or "Lỗi" in partitions[0]:
+            return {"status": "error", "message": "Không thể lấy thông tin ổ đĩa."}
+        
+        total_capacity = 0
+        total_used = 0
+        for p in partitions:
+            if isinstance(p.get("Tổng (GB)"), (int, float)):
+                total_capacity += p["Tổng (GB)"]
+            if isinstance(p.get("Đã dùng (GB)"), (int, float)):
+                total_used += p["Đã dùng (GB)"]
+        
+        percent_used = round((total_used / total_capacity) * 100, 1) if total_capacity > 0 else 0
+        return {"status": "success", "data": {"total_gb": round(total_capacity, 1), "used_gb": round(total_used, 1), "percent_used": percent_used}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def get_gpu_summary(wmi_service):
+    """Lấy thông tin tóm tắt về GPU (chậm hơn)."""
+    try:
+        gpus = get_gpu_details(wmi_service)
+        if not gpus or "Lỗi" in gpus[0]:
+            return {"status": "error", "message": "Không thể lấy thông tin GPU."}
+        
+        # Lấy GPU chính (thường là cái đầu tiên)
+        main_gpu = gpus[0]
+        return {"status": "success", "data": {"Tên": main_gpu.get("Tên", NOT_AVAILABLE), "Bộ nhớ (MB)": main_gpu.get("Tổng bộ nhớ (MB)", NOT_AVAILABLE)}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- End New Granular Functions ---
+
+
 def clean_registry_with_backup():
     """
     *Simulates* cleaning registry entries and *simulates* creating a backup.

@@ -1,0 +1,1390 @@
+
+<!DOCTYPE html>
+<html lang="en"><head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>PC Configuration Information System: A Professional Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'navy': '#1e293b',
+                        'warm-gray': '#78716c',
+                        'soft-blue': '#0ea5e9',
+                        'accent-orange': '#f97316'
+                    },
+                    fontFamily: {
+                        'serif': ['Crimson Text', 'serif'],
+                        'sans': ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html {
+            scroll-behavior: smooth;
+        }
+        .hero-gradient {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+        }
+        .toc-fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            z-index: 40;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+        .toc-fixed.active {
+            transform: translateX(0);
+        }
+        .main-content {
+            margin-left: 0;
+            transition: margin-left 0.3s ease;
+        }
+        .main-content.shifted {
+            margin-left: 280px;
+        }
+        @media (min-width: 1024px) {
+            .toc-fixed {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 280px;
+            }
+        }
+        .citation-link {
+            color: #0ea5e9;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dotted #0ea5e9;
+        }
+        .citation-link:hover {
+            background-color: #e0f2fe;
+            border-bottom: 1px solid #0ea5e9;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 1.5rem;
+            height: 60vh;
+        }
+        .bento-main {
+            grid-row: 1 / 3;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .bento-side-1 {
+            background: linear-gradient(45deg, #0ea5e9 0%, #38bdf8 100%);
+        }
+        .bento-side-2 {
+            background: linear-gradient(45deg, #f97316 0%, #fb923c 100%);
+        }
+    </style>
+  </head>
+
+  <body class="bg-gray-50 text-gray-900 font-sans overflow-x-hidden">
+    <!-- Toggle Button for Mobile -->
+    <button class="lg:hidden fixed top-4 left-4 z-50 bg-navy text-white p-2 rounded-lg shadow-lg" id="toc-toggle">
+      <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Fixed Table of Contents -->
+    <nav class="toc-fixed bg-white shadow-xl border-r border-gray-200 overflow-y-auto" id="toc">
+      <div class="p-6">
+        <div class="mb-8">
+          <h3 class="font-serif text-xl font-semibold text-navy mb-2">Table of Contents</h3>
+          <div class="w-12 h-0.5 bg-soft-blue"></div>
+        </div>
+
+        <ul class="space-y-3 text-sm">
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors font-medium" href="#executive-summary">
+              <i class="fas fa-chart-line w-4 mr-2"></i>Executive Summary
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors" href="#project-overview">
+              <i class="fas fa-info-circle w-4 mr-2"></i>Project Overview
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors" href="#ui-prototype">
+              <i class="fas fa-desktop w-4 mr-2"></i>UI Prototype Design
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#main-window">
+              <i class="fas fa-window-maximize w-3 mr-2"></i>Main Application Window
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#dashboard-tab">
+              <i class="fas fa-tachometer-alt w-3 mr-2"></i>Dashboard Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#system-info-tab">
+              <i class="fas fa-info-circle w-3 mr-2"></i>System Information Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#security-tab">
+              <i class="fas fa-shield-alt w-3 mr-2"></i>Security Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#internet-tab">
+              <i class="fas fa-wifi w-3 mr-2"></i>Internet Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#utilities-tab">
+              <i class="fas fa-tools w-3 mr-2"></i>Utilities Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors pl-6" href="#settings-tab">
+              <i class="fas fa-cog w-3 mr-2"></i>Settings Tab
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors" href="#technical-implementation">
+              <i class="fas fa-code w-4 mr-2"></i>Technical Implementation
+            </a>
+          </li>
+          <li>
+            <a class="block text-warm-gray hover:text-navy transition-colors" href="#conclusion">
+              <i class="fas fa-flag-checkered w-4 mr-2"></i>Conclusion
+            </a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <!-- Hero Section with Bento Grid -->
+      <section class="hero-gradient min-h-screen flex items-center justify-center p-4 sm:p-8">
+        <div class="w-full max-w-7xl mx-auto">
+          <div class="bento-grid mb-12">
+            <div class="bento-main rounded-2xl p-6 sm:p-8 md:p-12 flex flex-col justify-center">
+              <div class="text-white">
+                <h1 class="font-serif text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-4 sm:mb-6">
+                  <span class="italic">PC Configuration</span>
+                  <br/>
+                  Information System
+                </h1>
+                <p class="text-lg sm:text-xl text-blue-100 mb-6 sm:mb-8 max-w-2xl">
+                  A Professional Analysis and UI Simulation for Windows-based System Management
+                </p>
+                <div class="flex items-center space-x-4 text-sm text-blue-200">
+                  <span><i class="fab fa-python mr-2"></i>Python + PyQt5</span>
+                  <span><i class="fab fa-windows mr-2"></i>Windows Platform</span>
+                  <span><i class="fas fa-chart-pie mr-2"></i>Real-time Monitoring</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bento-side-1 rounded-2xl p-6 flex flex-col justify-center text-white">
+              <div class="text-center">
+                <i class="fas fa-microchip text-3xl mb-4 opacity-80"></i>
+                <h3 class="font-serif text-xl font-semibold mb-2">System Monitoring</h3>
+                <p class="text-sm opacity-90">Real-time CPU, RAM, and Disk visualization with interactive charts</p>
+              </div>
+            </div>
+
+            <div class="bento-side-2 rounded-2xl p-6 flex flex-col justify-center text-white">
+              <div class="text-center">
+                <i class="fas fa-qrcode text-3xl mb-4 opacity-80"></i>
+                <h3 class="font-serif text-xl font-semibold mb-2">QR Generation</h3>
+                <p class="text-sm opacity-90">Export system configuration as scannable QR codes</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Key Highlights -->
+          <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-xl">
+            <h2 class="font-serif text-2xl font-semibold text-navy mb-6">Key System Features</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+              <div class="text-center">
+                <div class="w-16 h-16 bg-soft-blue rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-tachometer-alt text-white text-xl"></i>
+                </div>
+                <h3 class="font-semibold text-navy mb-2">Interactive Dashboard</h3>
+                <p class="text-sm text-warm-gray">Real-time resource monitoring with clickable charts for seamless navigation</p>
+              </div>
+              <div class="text-center">
+                <div class="w-16 h-16 bg-accent-orange rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-shield-alt text-white text-xl"></i>
+                </div>
+                <h3 class="font-semibold text-navy mb-2">Security Management</h3>
+                <p class="text-sm text-warm-gray">Centralized control for antivirus, firewall, and system protection</p>
+              </div>
+              <div class="text-center">
+                <div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-network-wired text-white text-xl"></i>
+                </div>
+                <h3 class="font-semibold text-navy mb-2">Network Tools</h3>
+                <p class="text-sm text-warm-gray">Comprehensive network diagnostics and management utilities</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Executive Summary -->
+      <section class="py-16 px-8 bg-white" id="executive-summary">
+        <div class="max-w-4xl mx-auto">
+          <div class="text-center mb-12">
+            <h2 class="font-serif text-4xl font-bold text-navy mb-4">Executive Summary</h2>
+            <div class="w-24 h-1 bg-soft-blue mx-auto"></div>
+          </div>
+
+          <div class="prose prose-lg max-w-none">
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-8 mb-8">
+              <h3 class="font-serif text-2xl font-semibold text-navy mb-4">Project Overview</h3>
+              <p class="text-warm-gray leading-relaxed">
+                The PC Configuration Information System represents a comprehensive desktop application designed for the Windows platform,
+                serving as a centralized hub for retrieving, visualizing, and managing detailed PC configuration information. Built with
+                Python and PyQt5, this system provides an intuitive graphical user interface that simplifies access to complex system data
+                for both technical and non-technical users.
+              </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 mb-8">
+              <div class="bg-gray-50 rounded-xl p-6">
+                <h4 class="font-semibold text-navy mb-3"><i class="fas fa-bullseye text-soft-blue mr-2"></i>Core Objectives</h4>
+                <ul class="text-sm text-warm-gray space-y-2">
+                  <li>• Real-time system resource monitoring (CPU, RAM, Disk)</li>
+                  <li>• Comprehensive hardware and software information retrieval</li>
+                  <li>• QR code generation for system configuration sharing</li>
+                  <li>• Integrated security and network management tools</li>
+                  <li>• User-friendly interface with modern design principles</li>
+                </ul>
+              </div>
+
+              <div class="bg-gray-50 rounded-xl p-6">
+                <h4 class="font-semibold text-navy mb-3"><i class="fas fa-cogs text-accent-orange mr-2"></i>Technology Stack</h4>
+                <ul class="text-sm text-warm-gray space-y-2">
+                  <li>• <strong>Platform:</strong> Windows operating system</li>
+                  <li>• <strong>Language:</strong> Python 3.x</li>
+                  <li>• <strong>UI Framework:</strong> PyQt5 with QtChart integration</li>
+                  <li>• <strong>System Libraries:</strong> psutil, platform, wmi</li>
+                  <li>• <strong>QR Generation:</strong> qrcode + PIL</li>
+                </ul>
+              </div>
+            </div>
+
+            <blockquote class="border-l-4 border-soft-blue pl-6 italic text-lg text-navy bg-blue-50 p-6 rounded-r-xl">
+              "This application empowers users to understand and manage their PC's configuration with ease,
+              bridging the gap between complex system data and user-friendly visualization."
+            </blockquote>
+          </div>
+        </div>
+      </section>
+
+      <!-- Project Overview -->
+      <section class="py-16 px-8 bg-gray-50" id="project-overview">
+        <div class="max-w-6xl mx-auto">
+          <h2 class="font-serif text-4xl font-bold text-navy text-center mb-12">Project Overview and Core Objectives</h2>
+
+          <div class="grid lg:grid-cols-2 gap-12 mb-12">
+            <div>
+              <h3 class="font-serif text-2xl font-semibold text-navy mb-6">Project Goal</h3>
+              <p class="text-warm-gray leading-relaxed mb-6">
+                The primary objective is to develop a comprehensive desktop application for Windows that serves as a
+                centralized hub for retrieving, visualizing, and managing detailed PC configuration information. The
+                system is designed to cater to both technical and non-technical users, providing an intuitive GUI
+                that simplifies the process of accessing complex system data.
+              </p>
+
+              <div class="bg-white rounded-xl p-6 shadow-sm">
+                <h4 class="font-semibold text-navy mb-4">Key Features</h4>
+                <div class="space-y-3">
+                  <div class="flex items-start space-x-3">
+                    <div class="w-2 h-2 bg-soft-blue rounded-full mt-2"></div>
+                    <div>
+                      <strong class="text-navy">Interactive Dashboard:</strong>
+                      <span class="text-warm-gray text-sm"> Real-time CPU, RAM, and disk usage visualization</span>
+                    </div>
+                  </div>
+                  <div class="flex items-start space-x-3">
+                    <div class="w-2 h-2 bg-soft-blue rounded-full mt-2"></div>
+                    <div>
+                      <strong class="text-navy">Detailed System Information:</strong>
+                      <span class="text-warm-gray text-sm"> Comprehensive hardware and software specifications</span>
+                    </div>
+                  </div>
+                  <div class="flex items-start space-x-3">
+                    <div class="w-2 h-2 bg-soft-blue rounded-full mt-2"></div>
+                    <div>
+                      <strong class="text-navy">QR Code Generation:</strong>
+                      <span class="text-warm-gray text-sm"> Shareable system configuration codes</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="font-serif text-2xl font-semibold text-navy mb-6">Target Platform &amp; Technology</h3>
+
+              <div class="space-y-6">
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fab fa-windows text-blue-500 mr-2"></i>Platform: Windows
+                  </h4>
+                  <p class="text-sm text-warm-gray">
+                    Specifically designed for Windows OS to leverage platform-specific APIs and system calls
+                    for accessing comprehensive hardware and software information. This includes detailed data
+                    on CPU architecture, RAM specifications, storage device health, and security settings.
+                  </p>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fab fa-python text-green-500 mr-2"></i>Language: Python
+                  </h4>
+                  <p class="text-sm text-warm-gray">
+                    Selected for its extensive ecosystem of libraries, readability, and rapid development capabilities.
+                    Python's versatility makes it ideal for system-level information retrieval, data visualization,
+                    and GUI development with libraries like
+                    <a class="citation-link" href="#">psutil</a>,
+                    <a class="citation-link" href="#">PyQt5</a>, and
+                    <a class="citation-link" href="#">qrcode</a>.
+                  </p>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fas fa-desktop text-purple-500 mr-2"></i>UI Framework: PyQt5
+                  </h4>
+                  <p class="text-sm text-warm-gray">
+                    Provides comprehensive tools for creating modern and responsive desktop applications.
+                    The QtChart module enables sophisticated data visualization, while the signal-slot
+                    mechanism ensures robust event handling for interactive elements.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- UI Prototype Design -->
+      <section class="py-16 px-8 bg-white" id="ui-prototype">
+        <div class="max-w-6xl mx-auto">
+          <h2 class="font-serif text-4xl font-bold text-navy text-center mb-12">User Interface (UI) Simulation and Prototype Design</h2>
+
+          <div class="prose prose-lg max-w-none mb-12">
+            <p class="text-warm-gray text-center text-lg leading-relaxed">
+              The design focuses on creating an intuitive, modern, and highly functional experience for end-users.
+              The prototype is developed to be fully interactive, demonstrating the application's capabilities through
+              a tabbed interface that logically groups related functionalities.
+            </p>
+          </div>
+
+          <!-- Main Window Design -->
+          <div class="mb-16" id="main-window">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Main Application Window and Navigation</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+              <div>
+                <h4 class="font-semibold text-navy mb-4">Tabbed Interface Structure</h4>
+                <p class="text-warm-gray mb-6">
+                  The primary navigation mechanism is a <code class="bg-gray-100 px-2 py-1 rounded">QTabWidget</code>,
+                  providing a multi-page interface where each tab contains distinct sets of controls and information.
+                  This logical separation ensures users can easily find the tools and data they need.
+                </p>
+
+                <div class="bg-gray-50 rounded-xl p-6">
+                  <h5 class="font-medium text-navy mb-3">Six Main Functional Areas:</h5>
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      <span class="text-warm-gray">1. Dashboard</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                      <span class="text-warm-gray">2. System Information</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                      <span class="text-warm-gray">3. Security</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-purple-500 rounded-full"></div>
+                      <span class="text-warm-gray">4. Internet</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-orange-500 rounded-full"></div>
+                      <span class="text-warm-gray">5. Utilities</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                      <div class="w-3 h-3 bg-gray-500 rounded-full"></div>
+                      <span class="text-warm-gray">6. Settings</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 class="font-semibold text-navy mb-4">Modern UI Style and Layout</h4>
+                <p class="text-warm-gray mb-6">
+                  The visual design adheres to a modern aesthetic with clean, minimalist, and professional appearance.
+                  This is achieved through custom stylesheets (QSS) and strategic use of PyQt5's layout managers.
+                </p>
+
+                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+                  <h5 class="font-medium text-navy mb-3">Layout Management Features:</h5>
+                  <ul class="text-sm text-warm-gray space-y-2">
+                    <li>• <strong>QVBoxLayout:</strong> Vertical stacking of widgets</li>
+                    <li>• <strong>QHBoxLayout:</strong> Horizontal arrangement</li>
+                    <li>• <strong>QGridLayout:</strong> Complex grid-based designs</li>
+                    <li>• <strong>QGroupBox:</strong> Visual grouping of related controls</li>
+                    <li>• <strong>Responsive Design:</strong> Adapts to window resizing</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dashboard Tab -->
+          <div class="mb-16" id="dashboard-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 1: Dashboard</h3>
+
+            <div class="bg-gray-50 rounded-2xl p-8 mb-8">
+              <div class="grid lg:grid-cols-2 gap-8 items-center">
+                <div>
+                  <h4 class="font-semibold text-navy mb-4">System Resource Pie Charts</h4>
+                  <p class="text-warm-gray mb-6">
+                    The centerpiece of the Dashboard tab features three interactive pie charts visualizing
+                    current usage of CPU, RAM, and disk space. These charts update in real-time using
+                    <a class="citation-link" href="#">psutil</a> for data retrieval and
+                    <a class="citation-link" href="#">QtChart</a> for visualization.
+                  </p>
+
+                  <div class="space-y-4">
+                    <div class="bg-white rounded-lg p-4">
+                      <h5 class="font-medium text-navy mb-2 flex items-center">
+                        <i class="fas fa-microchip text-blue-500 mr-2"></i>CPU Usage
+                      </h5>
+                      <p class="text-sm text-warm-gray">
+                        Real-time processor utilization with click-to-navigate functionality
+                      </p>
+                    </div>
+                    <div class="bg-white rounded-lg p-4">
+                      <h5 class="font-medium text-navy mb-2 flex items-center">
+                        <i class="fas fa-memory text-green-500 mr-2"></i>RAM Usage
+                      </h5>
+                      <p class="text-sm text-warm-gray">
+                        Memory allocation visualization with used/available indicators
+                      </p>
+                    </div>
+                    <div class="bg-white rounded-lg p-4">
+                      <h5 class="font-medium text-navy mb-2 flex items-center">
+                        <i class="fas fa-hdd text-purple-500 mr-2"></i>Disk Usage
+                      </h5>
+                      <p class="text-sm text-warm-gray">
+                        Storage capacity monitoring with dynamic updates
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="bg-white rounded-xl p-6 shadow-lg">
+                    <h5 class="font-semibold text-navy mb-4 text-center">Interactive Chart Preview</h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div class="chart-container h-40">
+                        <canvas id="cpuChart"></canvas>
+                      </div>
+                      <div class="chart-container h-40">
+                        <canvas id="ramChart"></canvas>
+                      </div>
+                      <div class="chart-container h-40">
+                        <canvas id="diskChart"></canvas>
+                      </div>
+                    </div>
+                    <p class="text-xs text-warm-gray text-center mt-4 italic">
+                      * Charts are clickable for navigation to detailed information
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-xl p-6 border border-gray-200">
+              <h4 class="font-semibold text-navy mb-4">Basic System Information Summary</h4>
+              <p class="text-warm-gray mb-6">
+                Positioned below the pie charts, this section provides a concise summary of fundamental
+                hardware and software configuration using data retrieved from the
+                <a class="citation-link" href="#">platform</a> and
+                <a class="citation-link" href="#">psutil</a> libraries.
+              </p>
+
+              <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-gray-50 rounded-lg p-4 text-center">
+                  <i class="fab fa-windows text-2xl text-blue-500 mb-2"></i>
+                  <div class="text-sm font-medium text-navy">Windows 11 Pro</div>
+                  <div class="text-xs text-warm-gray">Operating System</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4 text-center">
+                  <i class="fas fa-microchip text-2xl text-green-500 mb-2"></i>
+                  <div class="text-sm font-medium text-navy">Intel Core i7-12700K</div>
+                  <div class="text-xs text-warm-gray">Processor</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4 text-center">
+                  <i class="fas fa-memory text-2xl text-purple-500 mb-2"></i>
+                  <div class="text-sm font-medium text-navy">32.0 GB</div>
+                  <div class="text-xs text-warm-gray">Total RAM</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4 text-center">
+                  <i class="fas fa-hdd text-2xl text-orange-500 mb-2"></i>
+                  <div class="text-sm font-medium text-navy">1 TB SSD</div>
+                  <div class="text-xs text-warm-gray">Primary Storage</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System Information Tab -->
+          <div class="mb-16" id="system-info-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 2: System Information</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+              <div>
+                <h4 class="font-semibold text-navy mb-4">Left Panel: Detailed Hardware Configuration</h4>
+                <p class="text-warm-gray mb-6">
+                  The left panel functions as a structured, navigable list of the PC's hardware components.
+                  Implemented using <code class="bg-gray-100 px-2 py-1 rounded">QTreeWidget</code> or
+                  <code class="bg-gray-100 px-2 py-1 rounded">QListWidget</code>, it provides a master-detail
+                  view for exploring system architecture.
+                </p>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                  <h5 class="font-medium text-navy mb-4">Hardware Categories:</h5>
+                  <div class="space-y-2 text-sm">
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Operating System</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Processor</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Memory</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Graphics</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Storage</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                    <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <span class="text-warm-gray">Network</span>
+                      <i class="fas fa-chevron-right text-gray-400"></i>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 class="font-semibold text-navy mb-4">Right Panel: QR Code and User Input</h4>
+                <p class="text-warm-gray mb-6">
+                  The right panel dynamically displays detailed specifications for selected hardware components
+                  and features QR code generation functionality using the
+                  <a class="citation-link" href="#">qrcode</a> and
+                  <a class="citation-link" href="#">PIL</a> libraries.
+                </p>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                  <div class="text-center mb-4">
+                    <div class="w-32 h-32 bg-gray-100 rounded-lg mx-auto flex items-center justify-center mb-4">
+                      <i class="fas fa-qrcode text-4xl text-gray-400"></i>
+                    </div>
+                    <p class="text-xs text-warm-gray">System Configuration QR Code</p>
+                  </div>
+
+                  <div class="space-y-3">
+                    <div>
+                      <label class="block text-sm font-medium text-navy mb-1">Họ &amp; tên</label>
+                      <input class="w-full px-3 py-2 border border-gray-300 rounded text-sm" placeholder="Enter your full name" type="text"/>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-navy mb-1">Phòng ban</label>
+                      <input class="w-full px-3 py-2 border border-gray-300 rounded text-sm" placeholder="Enter department" type="text"/>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-navy mb-1">Ghi chú</label>
+                      <textarea class="w-full px-3 py-2 border border-gray-300 rounded text-sm h-16 resize-none" placeholder="Additional notes"></textarea>
+                    </div>
+                  </div>
+
+                  <div class="flex space-x-2 mt-4">
+                    <button class="flex-1 bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                      Xuất thông tin cấu hình
+                    </button>
+                    <button class="flex-1 bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600 transition-colors">
+                      Xuất QR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+              <h4 class="font-semibold text-navy mb-3 flex items-center">
+                <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+                Export Functionality Requirements
+              </h4>
+              <p class="text-warm-gray text-sm mb-4">
+                Both export buttons perform input validation before proceeding. The application prevents export
+                if the "Họ &amp; tên" or "Phòng ban" fields are empty, ensuring all exported reports are properly attributed.
+              </p>
+              <div class="grid md:grid-cols-2 gap-4 text-sm">
+                <div class="bg-white rounded-lg p-4">
+                  <strong class="text-navy">Export Configuration:</strong>
+                  <span class="text-warm-gray"> Generates comprehensive report with all system details and user information</span>
+                </div>
+                <div class="bg-white rounded-lg p-4">
+                  <strong class="text-navy">Export QR Code:</strong>
+                  <span class="text-warm-gray"> Saves QR code as image file containing system summary</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security Tab -->
+          <div class="mb-16" id="security-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 3: Security</h3>
+
+            <div class="grid lg:grid-cols-3 gap-6">
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-shield-virus text-red-500 mr-2"></i>
+                  Antivirus Controls
+                </h4>
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-warm-gray">Real-time Protection</span>
+                    <div class="flex items-center space-x-2">
+                      <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Enabled</span>
+                      <label class="switch">
+                        <input checked="" type="checkbox"/>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="space-y-2">
+                    <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                      Quick Scan
+                    </button>
+                    <button class="w-full bg-gray-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-gray-600 transition-colors">
+                      Full Scan
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-fire text-orange-500 mr-2"></i>
+                  Firewall Management
+                </h4>
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-warm-gray">Domain Network</span>
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-warm-gray">Private Network</span>
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active</span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm text-warm-gray">Public Network</span>
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active</span>
+                  </div>
+                  <button class="w-full bg-red-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-red-600 transition-colors">
+                    Disable Firewall
+                  </button>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-download text-blue-500 mr-2"></i>
+                  Virus Definitions
+                </h4>
+                <div class="space-y-4">
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm text-warm-gray mb-1">Last Updated</div>
+                    <div class="text-sm font-medium text-navy">2025-01-15 14:30</div>
+                  </div>
+                  <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                    Update Definitions
+                  </button>
+                  <div class="text-xs text-warm-gray text-center">
+                    Current Version: 1.387.456.0
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Internet Tab -->
+          <div class="mb-16" id="internet-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 4: Internet</h3>
+
+            <div class="space-y-8">
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-6">Network Adapter Information</h4>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="border-b border-gray-200">
+                        <th class="text-left py-3 px-4 font-medium text-navy">Adapter</th>
+                        <th class="text-left py-3 px-4 font-medium text-navy">Status</th>
+                        <th class="text-left py-3 px-4 font-medium text-navy">IPv4 Address</th>
+                        <th class="text-left py-3 px-4 font-medium text-navy">IPv6 Address</th>
+                        <th class="text-left py-3 px-4 font-medium text-navy">MAC Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="border-b border-gray-100">
+                        <td class="py-3 px-4 text-warm-gray">Wi-Fi</td>
+                        <td class="py-3 px-4"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">Connected</span></td>
+                        <td class="py-3 px-4 text-warm-gray">192.168.1.100</td>
+                        <td class="py-3 px-4 text-warm-gray">fe80::a123:b456:c789:d012</td>
+                        <td class="py-3 px-4 text-warm-gray">00:1A:2B:3C:4D:5E</td>
+                      </tr>
+                      <tr class="border-b border-gray-100">
+                        <td class="py-3 px-4 text-warm-gray">Ethernet</td>
+                        <td class="py-3 px-4"><span class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Disabled</span></td>
+                        <td class="py-3 px-4 text-warm-gray">-</td>
+                        <td class="py-3 px-4 text-warm-gray">-</td>
+                        <td class="py-3 px-4 text-warm-gray">00:1B:2C:3D:4E:5F</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="grid lg:grid-cols-2 gap-6">
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                  <h4 class="font-semibold text-navy mb-4">DNS Configuration</h4>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-navy mb-2">DNS Servers</label>
+                      <div class="space-y-2">
+                        <input class="w-full px-3 py-2 border border-gray-300 rounded text-sm" value="8.8.8.8"/>
+                        <input class="w-full px-3 py-2 border border-gray-300 rounded text-sm" value="8.8.4.4"/>
+                      </div>
+                    </div>
+                    <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                      Apply DNS Settings
+                    </button>
+                  </div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                  <h4 class="font-semibold text-navy mb-4">Ping Test</h4>
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-navy mb-2">Host to Ping</label>
+                      <div class="flex space-x-2">
+                        <input class="flex-1 px-3 py-2 border border-gray-300 rounded text-sm" placeholder="google.com" value="google.com"/>
+                        <button class="bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600 transition-colors">
+                          Ping
+                        </button>
+                      </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4 h-24 overflow-y-auto">
+                      <pre class="text-xs text-warm-gray">Pinging google.com [142.250.190.78] with 32 bytes of data:
+Reply from 142.250.190.78: bytes=32 time=12ms TTL=117
+Reply from 142.250.190.78: bytes=32 time=11ms TTL=117
+Reply from 142.250.190.78: bytes=32 time=13ms TTL=117
+Reply from 142.250.190.78: bytes=32 time=12ms TTL=117
+
+Ping statistics for 142.250.190.78:
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 11ms, Maximum = 13ms, Average = 12ms</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-red-50 border border-red-200 rounded-xl p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+                  Network Reset Functionality
+                </h4>
+                <p class="text-warm-gray text-sm mb-4">
+                  This powerful tool resets network configuration to default state. It will disable and re-enable
+                  all network adapters, clear DNS cache, and reset TCP/IP stack.
+                </p>
+                <button class="bg-red-500 text-white py-2 px-6 rounded text-sm font-medium hover:bg-red-600 transition-colors">
+                  Reset Network Configuration
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Utilities Tab -->
+          <div class="mb-16" id="utilities-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 5: Utilities</h3>
+
+            <div class="grid lg:grid-cols-3 gap-6">
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-wrench text-blue-500 mr-2"></i>
+                  System Repair &amp; Backup
+                </h4>
+                <div class="space-y-3">
+                  <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                    System File Checker
+                  </button>
+                  <button class="w-full bg-green-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-green-600 transition-colors">
+                    Disk Cleanup
+                  </button>
+                  <button class="w-full bg-purple-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-purple-600 transition-colors">
+                    Backup &amp; Restore
+                  </button>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-print text-green-500 mr-2"></i>
+                  Printer Management
+                </h4>
+                <div class="space-y-4">
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm font-medium text-navy">HP OfficeJet Pro 9010</span>
+                      <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Ready</span>
+                    </div>
+                    <div class="text-xs text-warm-gray">Default Printer</div>
+                  </div>
+                  <div class="space-y-2">
+                    <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                      Add Printer
+                    </button>
+                    <button class="w-full bg-red-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-red-600 transition-colors">
+                      Remove Printer
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-4 flex items-center">
+                  <i class="fas fa-download text-orange-500 mr-2"></i>
+                  Updates
+                </h4>
+                <div class="space-y-4">
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm font-medium text-navy mb-1">Windows Updates</div>
+                    <div class="text-xs text-warm-gray mb-2">Last checked: Today</div>
+                    <div class="text-xs text-green-600">✓ Up to date</div>
+                  </div>
+                  <button class="w-full bg-orange-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-orange-600 transition-colors">
+                    Check for Updates
+                  </button>
+                  <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                    Update Drivers
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings Tab -->
+          <div class="mb-16" id="settings-tab">
+            <h3 class="font-serif text-3xl font-semibold text-navy mb-8">Tab 6: Settings</h3>
+
+            <div class="grid lg:grid-cols-2 gap-8">
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-6">Application Information</h4>
+                <div class="space-y-4">
+                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-warm-gray">Application Name</span>
+                    <span class="text-sm font-medium text-navy">PC Configuration Manager</span>
+                  </div>
+                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-warm-gray">Version</span>
+                    <span class="text-sm font-medium text-navy">1.2.0</span>
+                  </div>
+                  <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-warm-gray">Build Date</span>
+                    <span class="text-sm font-medium text-navy">2025-01-15</span>
+                  </div>
+                  <div class="flex justify-between items-center py-2">
+                    <span class="text-sm text-warm-gray">Python Version</span>
+                    <span class="text-sm font-medium text-navy">3.10.8</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <h4 class="font-semibold text-navy mb-6">Customization</h4>
+                <div class="space-y-6">
+                  <div>
+                    <label class="block text-sm font-medium text-navy mb-3">Language</label>
+                    <select class="w-full px-3 py-2 border border-gray-300 rounded text-sm">
+                      <option>English</option>
+                      <option>Tiếng Việt</option>
+                      <option>中文</option>
+                      <option>日本語</option>
+                      <option>Español</option>
+                      <option>Français</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-medium text-navy mb-3">Theme</label>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div class="border-2 border-blue-500 rounded-lg p-3 cursor-pointer">
+                        <div class="flex items-center space-x-3">
+                          <div class="w-4 h-4 bg-blue-500 rounded"></div>
+                          <span class="text-sm text-navy">Light</span>
+                        </div>
+                      </div>
+                      <div class="border-2 border-gray-300 rounded-lg p-3 cursor-pointer hover:border-gray-400">
+                        <div class="flex items-center space-x-3">
+                          <div class="w-4 h-4 bg-gray-800 rounded"></div>
+                          <span class="text-sm text-navy">Dark</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button class="w-full bg-blue-500 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-600 transition-colors">
+                    Save Settings
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Technical Implementation -->
+      <section class="py-16 px-8 bg-gray-50" id="technical-implementation">
+        <div class="max-w-6xl mx-auto">
+          <h2 class="font-serif text-4xl font-bold text-navy text-center mb-12">Technical Implementation and Architecture</h2>
+
+          <div class="grid lg:grid-cols-2 gap-12 mb-12">
+            <div>
+              <h3 class="font-serif text-2xl font-semibold text-navy mb-6">GUI Framework and Libraries</h3>
+              <p class="text-warm-gray mb-6">
+                The graphical user interface is built using a combination of powerful Python libraries,
+                each chosen for specific strengths in creating modern, interactive desktop applications.
+              </p>
+
+              <div class="space-y-6">
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fab fa-python text-blue-500 mr-2"></i>PyQt5 Framework
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Provides the foundation for main application window, widgets, and layout management.
+                    The <code class="bg-gray-100 px-2 py-1 rounded">QMainWindow</code> class serves as the
+                    primary container with <code class="bg-gray-100 px-2 py-1 rounded">QTabWidget</code>
+                    organizing functional sections.
+                  </p>
+                  <div class="text-xs text-warm-gray">
+                    <strong>Key Features:</strong> Signal-slot mechanism, layout managers, native styling
+                  </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fas fa-chart-pie text-green-500 mr-2"></i>QtChart Module
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Integrated within PyQt5 ecosystem for creating dynamic pie charts on the Dashboard.
+                    Uses <code class="bg-gray-100 px-2 py-1 rounded">QPieSeries</code> and
+                    <code class="bg-gray-100 px-2 py-1 rounded">QChartView</code> for visualization.
+                  </p>
+                  <div class="text-xs text-warm-gray">
+                    <strong>Capabilities:</strong> Real-time updates, interactive elements, smooth animations
+                  </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fas fa-qrcode text-purple-500 mr-2"></i>QR Code Generation
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Combines <code class="bg-gray-100 px-2 py-1 rounded">qrcode</code> library for data encoding
+                    with <code class="bg-gray-100 px-2 py-1 rounded">PIL</code> (Python Imaging Library) for
+                    image creation and manipulation.
+                  </p>
+                  <div class="text-xs text-warm-gray">
+                    <strong>Workflow:</strong> Data encoding → Image generation → QPixmap conversion → UI display
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="font-serif text-2xl font-semibold text-navy mb-6">System Information Retrieval</h3>
+              <p class="text-warm-gray mb-6">
+                Accurate system data collection is achieved through specialized Python libraries that provide
+                cross-platform access to hardware and software information.
+              </p>
+
+              <div class="space-y-6">
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fas fa-tachometer-alt text-red-500 mr-2"></i>psutil Library
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Primary library for real-time system performance data including CPU, memory, and disk usage.
+                    Provides simple API for system statistics retrieval.
+                  </p>
+                  <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div class="bg-gray-50 p-2 rounded">
+                      <strong>CPU:</strong>
+                      <code>cpu_percent()</code>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded">
+                      <strong>RAM:</strong>
+                      <code>virtual_memory()</code>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded">
+                      <strong>Disk:</strong>
+                      <code>disk_usage()</code>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fas fa-info-circle text-blue-500 mr-2"></i>platform Module
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Part of Python standard library for high-level system and OS information.
+                    Provides functions for OS identification and basic system details.
+                  </p>
+                  <div class="text-xs text-warm-gray">
+                    <strong>Functions:</strong>
+                    <code>system()</code>,
+                    <code>release()</code>,
+                    <code>version()</code>,
+                    <code>machine()</code>,
+                    <code>processor()</code>
+                  </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                  <h4 class="font-semibold text-navy mb-3 flex items-center">
+                    <i class="fab fa-windows text-green-500 mr-2"></i>wmi Library
+                  </h4>
+                  <p class="text-sm text-warm-gray mb-3">
+                    Windows Management Instrumentation interface for detailed hardware-specific information
+                    on Windows systems, including BIOS, motherboard, and low-level component details.
+                  </p>
+                  <div class="text-xs text-warm-gray">
+                    <strong>Access:</strong> CPU serial numbers, physical memory modules, detailed hardware specs
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-8 shadow-lg">
+            <h3 class="font-serif text-2xl font-semibold text-navy mb-6">Event Handling and User Interaction</h3>
+            <p class="text-warm-gray mb-8">
+              The application's interactivity is powered by PyQt5's robust event handling and signal-slot mechanism,
+              enabling responsive and intuitive user experiences.
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-6">
+              <div class="text-center">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-mouse-pointer text-blue-500 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-navy mb-2">Chart Interaction</h4>
+                <p class="text-sm text-warm-gray">
+                  <code>QPieSeries</code> emits
+                  <code>clicked</code> signals connected to tab switching functions,
+                  enabling seamless navigation from Dashboard to detailed views.
+                </p>
+              </div>
+
+              <div class="text-center">
+                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-check-circle text-green-500 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-navy mb-2">Input Validation</h4>
+                <p class="text-sm text-warm-gray">
+                  Export functions include validation checks for required fields,
+                  preventing incomplete exports and ensuring data quality through
+                  <code>QMessageBox</code> feedback.
+                </p>
+              </div>
+
+              <div class="text-center">
+                <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i class="fas fa-sync-alt text-orange-500 text-xl"></i>
+                </div>
+                <h4 class="font-semibold text-navy mb-2">Real-time Updates</h4>
+                <p class="text-sm text-warm-gray">
+                  <code>QTimer</code> objects trigger regular data refresh cycles,
+                  updating charts and information displays without blocking the UI thread.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Conclusion -->
+      <section class="py-16 px-8 bg-navy text-white" id="conclusion">
+        <div class="max-w-4xl mx-auto text-center">
+          <h2 class="font-serif text-4xl font-bold mb-8">Conclusion</h2>
+          <div class="w-24 h-1 bg-soft-blue mx-auto mb-8"></div>
+
+          <p class="text-xl text-blue-100 leading-relaxed mb-8">
+            The PC Configuration Information System represents a comprehensive solution for Windows system management,
+            combining intuitive design with powerful functionality. Through its modular architecture and thoughtful
+            user experience design, the application successfully bridges the gap between complex system data and
+            accessible visualization.
+          </p>
+
+          <div class="grid md:grid-cols-3 gap-8 mb-12">
+            <div class="bg-white/10 rounded-xl p-6 backdrop-blur-sm">
+              <i class="fas fa-users text-3xl text-blue-300 mb-4"></i>
+              <h3 class="font-semibold mb-2">User-Centric Design</h3>
+              <p class="text-sm text-blue-100">
+                Intuitive interface catering to both technical and non-technical users with progressive disclosure of information
+              </p>
+            </div>
+
+            <div class="bg-white/10 rounded-xl p-6 backdrop-blur-sm">
+              <i class="fas fa-rocket text-3xl text-green-300 mb-4"></i>
+              <h3 class="font-semibold mb-2">Modern Technology</h3>
+              <p class="text-sm text-blue-100">
+                Python + PyQt5 foundation with real-time monitoring, QR code generation, and comprehensive system analysis
+              </p>
+            </div>
+
+            <div class="bg-white/10 rounded-xl p-6 backdrop-blur-sm">
+              <i class="fas fa-cogs text-3xl text-orange-300 mb-4"></i>
+              <h3 class="font-semibold mb-2">Integrated Utilities</h3>
+              <p class="text-sm text-blue-100">
+                Complete suite of security, network, and maintenance tools in a unified, accessible interface
+              </p>
+            </div>
+          </div>
+
+          <blockquote class="text-2xl font-serif italic text-blue-100 border-l-4 border-soft-blue pl-6 max-w-3xl mx-auto">
+            "This system demonstrates how thoughtful design and modern technology can transform complex system management
+            into an intuitive, visually engaging experience that empowers users to understand and control their computing environment."
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="py-8 px-8 bg-gray-900 text-gray-400">
+        <div class="max-w-6xl mx-auto">
+          <div class="text-center">
+            <p class="text-sm">
+              PC Configuration Information System | Professional Analysis and UI Simulation
+            </p>
+            <p class="text-xs mt-2">
+              Built with Python, PyQt5, and modern web technologies for comprehensive system management
+            </p>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <!-- Scripts -->
+    <script>
+        // Toggle TOC visibility on mobile
+        const tocToggle = document.getElementById('toc-toggle');
+        const toc = document.getElementById('toc');
+        const mainContent = document.getElementById('main-content');
+        
+        tocToggle.addEventListener('click', () => {
+            toc.classList.toggle('active');
+            mainContent.classList.toggle('shifted');
+        });
+
+        // Close TOC when clicking outside on mobile
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth < 1024 && 
+                !toc.contains(e.target) && 
+                e.target !== tocToggle &&
+                toc.classList.contains('active')) {
+                toc.classList.remove('active');
+                mainContent.classList.remove('shifted');
+            }
+        });
+
+        // Initialize charts
+        document.addEventListener('DOMContentLoaded', function() {
+            // CPU Chart
+            const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+            const cpuChart = new Chart(cpuCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Used', 'Available'],
+                    datasets: [{
+                        data: [65, 35],
+                        backgroundColor: ['#f97316', '#e2e8f0'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // RAM Chart
+            const ramCtx = document.getElementById('ramChart').getContext('2d');
+            const ramChart = new Chart(ramCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Used', 'Available'],
+                    datasets: [{
+                        data: [42, 58],
+                        backgroundColor: ['#10b981', '#e2e8f0'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Disk Chart
+            const diskCtx = document.getElementById('diskChart').getContext('2d');
+            const diskChart = new Chart(diskCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Used', 'Available'],
+                    datasets: [{
+                        data: [78, 22],
+                        backgroundColor: ['#0ea5e9', '#e2e8f0'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Make charts clickable
+            document.querySelectorAll('.chart-container').forEach(container => {
+                container.style.cursor = 'pointer';
+                container.addEventListener('click', function() {
+                    // Simulate navigation to System Information tab
+                    alert('Navigating to System Information tab...');
+                });
+            });
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add loading animation for export buttons
+        document.querySelectorAll('button').forEach(button => {
+            if (button.textContent.includes('Xuất') || button.textContent.includes('Export')) {
+                button.addEventListener('click', function(e) {
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>' + originalText;
+                    this.disabled = true;
+                    
+                    setTimeout(() => {
+                        this.innerHTML = originalText;
+                        this.disabled = false;
+                        alert('Export functionality would save data to file in actual application');
+                    }, 2000);
+                });
+            }
+        });
+    </script>
+
+  
+
+</body></html>

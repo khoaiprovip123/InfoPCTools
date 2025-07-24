@@ -1,0 +1,9 @@
+flet
+psutil
+pywin32
+Pillow
+pynvml
+packaging
+qrcode
+plotly
+kaleido

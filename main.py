@@ -2,9 +2,19 @@
 import sys
 import os
 import logging
+
+# Đảm bảo output console sử dụng UTF-8
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 import atexit
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QIcon
+import atexit
+import os
+import logging
+import sys
+
+# Đảm bảo output console sử dụng UTF-8
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # Thêm thư mục gốc vào sys.path để Python tìm thấy các module core và gui
 # Cách này hữu ích khi chạy trực tiếp main.py từ thư mục gốc
@@ -41,30 +51,16 @@ def cleanup_log_file_on_exit():
         print(f"INFO: File log '{LOG_FILE_PATH}' đã được xóa.") # Dùng print vì logging có thể đã shutdown
 
 
-from gui.gui_qt import PcInfoAppQt, resource_path # Import từ file gui_qt.py
+import flet as ft
+from gui.pc_info_gui_flet_new import main as main_flet
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    # Đặt icon cho ứng dụng (tùy chọn)
-    try:
-        icon_path = resource_path(os.path.join("assets", "logo", "hpc-logo.ico"))
-        if os.path.exists(icon_path):
-            app.setWindowIcon(QIcon(icon_path))
-        else:
-            # Fallback hoặc không đặt icon nếu không tìm thấy
-            print(f"Warning: Icon file not found at {icon_path}")
-    except Exception as e:
-        print(f"Error setting window icon: {e}")
-
-     # Thiết lập logging và đăng ký hàm dọn dẹp
+    # Thiết lập logging và đăng ký hàm dọn dẹp
     setup_global_logging()
     atexit.register(cleanup_log_file_on_exit)
 
-    logging.info("Khởi tạo ứng dụng PcInfoAppQt.")
+    logging.info("Khởi tạo ứng dụng PcInfoAppFlet.")
 
+    ft.app(target=main_flet)
+    logging.info("Ứng dụng PcInfoAppFlet đã hiển thị. Bắt đầu vòng lặp sự kiện.")
 
-    main_window = PcInfoAppQt()
-    main_window.show()
-    logging.info("Ứng dụng PcInfoAppQt đã hiển thị. Bắt đầu vòng lặp sự kiện.")
-    sys.exit(app.exec_())
